@@ -791,6 +791,16 @@
         "Blanco por dentro, verde por fuera; si quieres que te lo diga, espera. ¡La pera!",
         "Tiene dientes y no come, tiene cabeza y no es hombre. ¡El ajo!"
       ]
+    },
+    {
+      "preguntas": [
+        "donde esta es en claro oscuro"
+      ],
+      "respuestas": [
+        "Perdón, creo que me faltó ajustar ese detalle en la imagen. Para que salga exactamente con la técnica de claroscuro, solo dime \"crea la imagen del paisaje con árboles y montañas en claroscuro\" y la genero de nuevo para ti."
+      ],
+      "aprendido": true,
+      "origen": "gemini"
     }
   ]
 }

@@ -164,6 +164,7 @@ function toast(message) {
 function createChat() {
   const chat = { id: makeId(), title: "Nueva conversación", messages: [], createdAt: Date.now() };
   conversations = [chat]; // la conversación anterior se descarta
+  lastImage = null;
   activeId = chat.id;
   save(); render();
 }
@@ -183,7 +184,8 @@ function showTyping(label = "Wendy está pensando") {
 /* ---------------- Enviar mensajes (texto y/o foto) ---------------- */
 async function sendMessage(text, photo = null) {
   const content = (text || "").trim() || (photo ? "¿Qué estás viendo?" : "");
-  if (!content || busy) return;
+  if (!content) return;
+  if (busy) { toast("Espera un momento, todavía estoy terminando lo anterior."); return; }
   if (!activeChat()) createChat();
   const chat = activeChat();
   const userMessage = { role: "user", content };
@@ -298,30 +300,61 @@ function splitIntoChunks(text) {
   if (current.trim()) chunks.push(current.trim());
   return chunks;
 }
-function speak(text, { force = false, rate = null } = {}) {
+// listen: true → Wendy sigue escuchando «Ey Wendy» mientras habla (narración y alertas, que son frases cortas).
+let speechId = 0;              // cada frase nueva tiene su número: así una frase cortada no apaga a la siguiente
+let speakingListen = false;    // lo que se dice ahora deja el micrófono abierto
+let spokenText = "";           // lo que Wendy está diciendo (para no confundir su propia voz con una orden)
+let echoUntil = 0;             // hasta cuándo se descarta lo que suene igual a lo que dijo Wendy
+function speak(text, { force = false, rate = null, listen = false } = {}) {
   return new Promise((resolve) => {
     if ((!voiceOn && !force) || !("speechSynthesis" in window) || !text) return resolve();
     const chunks = splitIntoChunks(cleanForSpeech(text));
     if (!chunks.length) return resolve();
+    const id = ++speechId;
     speechSynthesis.cancel();
     speaking = true;
-    pauseWake();
+    speakingListen = listen;
+    spokenText = norm(text);
+    echoUntil = Infinity;
     document.body.classList.add("wendy-speaking");
     updateOrbState();
+    // El micrófono se pausa cuando la voz de verdad empieza: si el navegador no deja hablar
+    // (al abrir la página, antes de tocarla), Wendy sigue escuchando «Ey Wendy».
+    if (listen) resumeWake();
+    let started = false;
     let finished = false;
     let safety = null;
+    const onStart = () => {
+      if (started) return;
+      started = true;
+      if (!listen && id === speechId) pauseWake();
+    };
+    const startCheck = setTimeout(() => {
+      if (started || finished) return;
+      // La voz nunca empezó (Chrome no deja hablar hasta el primer toque): se muestra el aviso
+      // y Wendy sigue escuchando en vez de quedarse trabada en «Hablando…».
+      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) { pendingSpeech = text; showUnlock(); }
+      speechSynthesis.cancel();
+      done();
+    }, 3000);
     const done = () => {
       if (finished) return;
       finished = true;
-      speaking = false;
-      document.body.classList.remove("wendy-speaking");
-      updateOrbState();
       clearTimeout(safety);
-      resumeWake();
+      clearTimeout(startCheck);
+      if (id === speechId) {
+        // Solo la frase más reciente cambia el estado (las cortadas por otra no cuentan).
+        speaking = false;
+        speakingListen = false;
+        echoUntil = Date.now() + 3000; // el eco de su voz puede llegar un poco después
+        document.body.classList.remove("wendy-speaking");
+        updateOrbState();
+        setTimeout(resumeWake, 300); // una pausa corta para no oír el final de su propia voz
+      }
       resolve();
     };
     // Por si el navegador nunca avisa que terminó.
-    safety = setTimeout(done, 15000 + text.length * 90);
+    safety = setTimeout(done, 8000 + text.length * 80);
     chunks.forEach((chunk, index) => {
       const utterance = new SpeechSynthesisUtterance(chunk);
       utterance.lang = chosenVoice?.lang || LANG;
@@ -329,10 +362,11 @@ function speak(text, { force = false, rate = null } = {}) {
       utterance.rate = rate || speechRate;
       utterance.volume = speechVolume;
       utterance.pitch = 1.05;
+      utterance.onstart = onStart;
       utterance.onerror = (event) => {
         // Chrome no deja hablar hasta que la persona toque la página una vez.
         if (event.error === "not-allowed") { pendingSpeech = text; showUnlock(); }
-        if (index === chunks.length - 1 || event.error === "not-allowed") done();
+        if (index === chunks.length - 1 || event.error === "not-allowed" || event.error === "interrupted" || event.error === "canceled") done();
       };
       if (index === chunks.length - 1) utterance.onend = done;
       speechSynthesis.speak(utterance);
@@ -370,6 +404,23 @@ let wakeMode = false;
 let conversationActive = false;  // dijiste «Ey Wendy»: puedes seguir hablando sin repetir su nombre
 let conversationTimer = null;
 const WAKE_WORD = /\b(wendy|wendi|wendie|wendys|g[uü]endy|g[uü]endi|uendy|bendy|wenddy|windy|gwendy)\b[\s,.!?¡¿]*/i;
+let recCount = 0;
+let interimTimer = null;
+let handledResult = "";
+// ¿Es la propia voz de Wendy que el micrófono volvió a oír?
+function isEcho(text) {
+  if (!spokenText || Date.now() > echoUntil) return false;
+  const words = norm(text).split(" ").filter((w) => w.length > 2 && !/^(wendy|wendi)$/.test(w));
+  if (!words.length) return false;
+  const said = new Set(spokenText.split(" "));
+  return words.filter((w) => said.has(w)).length / words.length >= 0.6;
+}
+// Órdenes cortas y claras que se pueden atender en cuanto se reconocen.
+function quickCommand(text) {
+  const n = norm(text.replace(WAKE_WORD, " "));
+  return CMD.liveStart.test(n) || CMD.liveStop.test(n) || CMD.narrate.test(n) ||
+    CMD.openCamera.test(n) || CMD.closeCamera.test(n) || CMD.farewell.test(n) || CMD.stopListening.test(n);
+}
 const FILLER_ONLY = /^(ey|hey|ei|oye|ok|okey|okay|hola|alo|al[oó]|buenas)?[\s,.!?¡¿]*$/i;
 
 function wakePref() { return localStorage.getItem(WAKE_KEY) !== "off"; }
@@ -411,7 +462,11 @@ function startRecognition(mode) {
   rec.maxAlternatives = 1;
   recognition = rec;
   recMode = mode;
+  rec.__n = ++recCount;
+  clearTimeout(interimTimer);
 
+  rec.__at = Date.now();
+  rec.onstart = () => { rec.__started = true; };
   rec.onspeechstart = () => { userVoiceUntil = Date.now() + 1500; };
   rec.onsoundstart = () => { userVoiceUntil = Math.max(userVoiceUntil, Date.now() + 600); };
   rec.onresult = (event) => {
@@ -427,8 +482,26 @@ function startRecognition(mode) {
       if (final.trim()) { stopRecognition(); handleCommand(final); }
     } else {
       if (conversationActive) clearTimeout(conversationTimer); // estás hablando: no cortar la conversación
-      if (interim && (conversationActive || WAKE_WORD.test(interim))) showBanner(`«${interim.trim()}»`);
-      if (final.trim()) handleWakeSpeech(final);
+      const last = event.results.length - 1;
+      if (interim && (conversationActive || WAKE_WORD.test(interim)) && !isEcho(interim)) showBanner(`«${interim.trim()}»`);
+      if (final.trim()) {
+        clearTimeout(interimTimer);
+        if (handledResult === `${rec.__n}:${last}`) { handledResult = ""; return; } // ya se atendió con el texto provisional
+        handleWakeSpeech(final);
+        return;
+      }
+      // Rapidez: Chrome tarda en dar el texto «final». Si dijiste «Wendy …» y te quedas callada
+      // un momento, atendemos el texto provisional sin esperar.
+      clearTimeout(interimTimer);
+      const text = interim.trim();
+      if (text && (WAKE_WORD.test(text) || conversationActive)) {
+        const wait = !WAKE_WORD.test(text) ? 1200 : quickCommand(text) ? 450 : 1000;
+        interimTimer = setTimeout(() => {
+          if (recognition !== rec) return;
+          handledResult = `${rec.__n}:${last}`;
+          handleWakeSpeech(text);
+        }, wait);
+      }
     }
   };
   rec.onerror = (event) => {
@@ -467,11 +540,21 @@ function stopRecognition() {
   }
   updateMicUI();
 }
+// Vigilante: si el micrófono de «Ey Wendy» se quedó apagado o trabado, lo vuelve a encender solo.
+setInterval(() => {
+  if (!wakeMode || busy || (speaking && !speakingListen) || recMode === "push") return;
+  if (!recognition) { resumeWake(); return; }
+  if (recMode === "wake" && !recognition.__started && Date.now() - recognition.__at > 4000) {
+    console.warn("El reconocimiento de voz no arrancó; lo reinicio.");
+    stopRecognition();
+    setTimeout(resumeWake, 300);
+  }
+}, 3000);
 function pauseWake() {
   if (recMode === "wake") stopRecognition();
 }
 function resumeWake() {
-  if (wakeMode && !recognition && !speaking && !busy) {
+  if (wakeMode && !recognition && (!speaking || speakingListen) && !busy) {
     startRecognition("wake");
     startConversationTimer();
   }
@@ -497,6 +580,14 @@ function handleWakeSpeech(text) {
   const said = text.trim();
   if (!said) return;
   const match = said.match(WAKE_WORD);
+  // Lo que suena igual a lo que Wendy acaba de decir es su propia voz (eco), no una orden.
+  if (isEcho(said)) return;
+  if (speaking && speakingListen) {
+    // Narrando con el micrófono abierto: solo cuenta si dices «Wendy» (o «basta», «silencio»…).
+    const n = norm(said);
+    if (!match && !CMD.stop.test(n) && !CMD.liveStop.test(n)) return;
+    stopSpeaking();
+  }
   if (!conversationActive && !match) return; // no te dirigiste a Wendy
   conversationActive = true;
   let command = match ? `${said.slice(0, match.index)} ${said.slice(match.index + match[0].length)}`.trim() : said;
@@ -517,7 +608,7 @@ function norm(text) {
 function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
 
 const CMD = {
-  stop: /^(para|detente|silencio|callate|basta|stop|shh|ya)( ya| wendy| por favor)?$/,
+  stop: /^(ya )?(para|parale|detente|silencio|callate|basta|stop|shh|ya|apagalo|quitalo|alto)( ya| wendy| por favor| porfa)?$/,
   closeCamera: /\b(cierra|cerrar|apaga|apagar|desactiva|quita|oculta)\b.*\bcamara\b/,
   switchCamera: /\b(cambia|cambiar|voltea|gira)\b.*\bcamara\b|\bcamara (frontal|trasera|de atras|de enfrente)\b/,
   vision: /\b(toma|tomame|tomale|saca|sacame|haz|hazme|captura)\b (una |la )?(foto|fotografia|imagen)|\bque (estas viendo|ves|miras|hay (enfrente|delante|aqui|ahi)|es esto|tengo (aqui|en la mano))\b|\bque estoy (viendo|mirando)\b|\bdescribe (lo que ves|esto|la foto|la imagen|lo que hay)\b|\bmira esto\b|\blee(me)? (esto|este texto|lo que dice)\b|\busa la camara\b|\bde que color es\b|\bque objeto es\b/,
@@ -532,10 +623,10 @@ const CMD = {
   normalSpeed: /\b(habla normal|velocidad normal)\b/,
   louder: /\b(sube el volumen|habla mas fuerte|mas fuerte|subele)\b|^mas alto$/,
   quieter: /\b(baja el volumen|habla mas (bajo|quedito|suave)|bajale)\b|^mas (bajo|quedito)$/,
-  liveStop: /\b(deten|detener|para|parar|quita|apaga|desactiva|termina|cierra|sal del|salir del)\b.*\b(en vivo|tiempo real|narracion|narrar|descripcion)\b|\bdeja de (narrar|describir)\b|\bya no narres\b/,
-  liveStopAll: /\b(en vivo|tiempo real|descripcion)\b|\bdeja de describir\b/,
-  liveStart: /\b(modo en vivo|en tiempo real|en vivo|describe (todo el tiempo|continuamente|sin parar)|narra|narrame|ve narrando|ve describiendo)\b/,
-  narrate: /\b(narra|narrame|ve narrando|ve describiendo|en voz alta)\b/,
+  liveStop: /\b(deten|detener|para|parar|quita|quitar|apaga|apagar|desactiva|desactivar|termina|terminar|cierra|cerrar|sal del|salir del)\b.*\b(en vivo|envivo|tiempo real|narracion|narrar|descripcion)\b|\bdeja de (narrar|describir)\b|\bya no (narres|describas)\b|\b(no|sin) narr[a-z]*\b/,
+  liveStopAll: /\b(en vivo|envivo|tiempo real|descripcion)\b|\bdeja de describir\b/,
+  liveStart: /\b(modo en vivo|en tiempo real|en vivo|envivo|describe (todo el tiempo|continuamente|sin parar)|narr[a-z]*|ve describiendo|ve diciendo lo que ves|dime lo que (ves|pasa))\b/,
+  narrate: /\b(narr[a-z]*|ve describiendo|ve diciendo lo que ves|dime lo que (ves|pasa)|en voz alta)\b/,
   location: /\b(donde estoy|donde me encuentro|donde estamos|cual es mi ubicacion|mi ubicacion|en que (lugar|ciudad|pais|zona|departamento|municipio) estoy|en que (lugar|ciudad|pais) estamos|ubicame)\b/,
   weather: /\b(clima|que tiempo hace|como esta el tiempo|que tal el tiempo|el tiempo (de|en|para) |temperatura|va a llover|llovera|esta lloviendo|hace (frio|calor)|pronostico)\b/,
   notWeather: /\b(agua|ebullicion|cuerpo|humano|fiebre|sol|horno|corporal)\b/,
@@ -573,7 +664,12 @@ function handleCommand(text) {
   const n = norm(original);
   if (!n) return;
 
-  if (CMD.stop.test(n)) { stopSpeaking(); input.value = ""; return; }
+  if (CMD.stop.test(n)) {
+    stopSpeaking(); input.value = "";
+    if (narrating) { setNarrate(false); toast("Narración apagada."); }
+    else if (live) stopLive();
+    return;
+  }
 
   // Memoria: «¿qué hice ayer?», «¿de qué hablamos hoy?», «¿te acuerdas…?»
   if (CMD.forget.test(n)) {
@@ -586,20 +682,23 @@ function handleCommand(text) {
 
   // Modo en vivo
   if (CMD.liveStop.test(n)) {
-    if (narrating && !CMD.liveStopAll.test(n)) { setNarrate(false); localReply(original, "Listo, dejo de narrar. La descripción sigue en pantalla."); }
-    else { stopLive(); localReply(original, "Listo, detuve la descripción en vivo."); }
+    if (narrating && !CMD.liveStopAll.test(n)) { setNarrate(false); localReply(original, "Listo, ya me callo. Sigo mostrando lo que veo en la pantalla."); }
+    else { stopLive(); localReply(original, "Listo, ya lo apagué."); }
     return;
   }
   if (CMD.liveStart.test(n)) {
     input.value = "";
     const withVoice = CMD.narrate.test(n);
     startLive({ narrate: withVoice }).then((ok) => ok && localReply(original, withVoice
-      ? "Listo, te voy diciendo lo que veo cuando cambie la escena. Di «deja de narrar» para parar."
-      : "Listo, modo en vivo activado. Abajo del video verás lo que reconozco en tiempo real."));
+      ? "Listo, te voy diciendo lo que veo. Para que me calle, dime basta."
+      : "Listo, ya está activado. Abajo del video verás lo que reconozco."));
     return;
   }
 
   // Crear imágenes
+  // «Crea otra», «hazme otra igual»: otra versión de la última imagen
+  const imageEdit = parseImageEdit(original);
+  if (imageEdit?.again) { createImage(original, null, imageEdit); return; }
   const imageRequest = parseImageRequest(original);
   if (imageRequest) { createImage(original, imageRequest); return; }
 
@@ -675,6 +774,8 @@ function handleCommand(text) {
     input.value = "";
     return;
   }
+  // «Hazla más azul», «ponle un sombrero», «cámbiale el fondo»: edita la última imagen
+  if (imageEdit) { createImage(original, null, imageEdit); return; }
 
   sendMessage(original);
 }
@@ -854,7 +955,7 @@ let geminiAvailable = false;
 
 // Muestra tu mensaje, el indicador de «pensando», y luego la respuesta de la tarea.
 async function runTask(userText, typingLabel, task) {
-  if (busy) return;
+  if (busy) { toast("Espera un momento, todavía estoy terminando lo anterior."); return; }
   if (!activeChat()) createChat();
   const chat = activeChat();
   chat.messages.push({ role: "user", content: userText });
@@ -872,14 +973,17 @@ async function runTask(userText, typingLabel, task) {
     result = { reply: error.message || "Algo salió mal. Inténtalo de nuevo.", source: "local" };
   }
   $("#typingIndicator")?.remove();
-  const message = { role: "assistant", content: result.reply, source: result.source || "local" };
-  if (result.image) message.image = result.image;
-  chat.messages.push(message);
-  save();
-  if (!/^(¿)?(qu[eé] hice|de qu[eé] hablamos)/i.test(userText) && result.source !== "memoria") { remember("yo", userText); remember("wendy", message.content); }
-  addMessage("assistant", message.content, { source: message.source, image: message.image });
-  scrollToBottom();
-  setBusy(false);
+  try {
+    const message = { role: "assistant", content: result.reply, source: result.source || "local" };
+    if (result.image) message.image = result.image;
+    chat.messages.push(message);
+    save();
+    if (!/^(¿)?(qu[eé] hice|de qu[eé] hablamos)/i.test(userText) && result.source !== "memoria") { remember("yo", userText); remember("wendy", message.content); }
+    addMessage("assistant", message.content, { source: message.source, image: message.image });
+    scrollToBottom();
+  } finally {
+    setBusy(false); // pase lo que pase, Wendy queda lista para lo siguiente
+  }
   await speak(result.spoken || result.reply);
   resumeWake();
 }
@@ -965,7 +1069,7 @@ function tellWeather(userText) {
 const IMAGE_VERBS = "crea|cr[eé]ame|crear|genera|gen[eé]rame|generar|dibuja|dib[uú]jame|dibujar|pinta|p[ií]ntame|pintar|dise[ñn]a|dis[eé][ñn]ame|ilustra|il[uú]strame|haz|hazme|hacer|muestra|mu[eé]strame";
 const IMAGE_NOUNS = "im[aá]gen(?:es)?|dibujo|ilustraci[oó]n|foto(?:graf[ií]a)?|retrato|logo(?:tipo)?|paisaje|pintura|caricatura|p[oó]ster|fondo de pantalla|wallpaper|personaje|icono|meme|arte";
 const IMAGE_RE = new RegExp(
-  `^(?:wendy[, ]*)?(?:por favor[, ]*)?(?:puedes |podr[ií]as |quiero que )?(${IMAGE_VERBS})\\s+(?:me\\s+)?(?:(?:una?|el|la)\\s+)?(?:(${IMAGE_NOUNS})\\s*)?(?:(?:de|del|sobre|con|que sea|que tenga|donde|en la que)\\s+)?(.+)$`,
+  `^(?:wendy[, ]*)?(?:por favor[, ]*)?(?:puedes |podr[ií]as |quiero que )?(${IMAGE_VERBS})\\s+(?:me\\s+)?(?:(?:una?|el|la|otra|otro|otras|otros|unas|unos|mas|m[aá]s|nueva|nuevo|una nueva|un nuevo|\\d+)\\s+)?(?:(${IMAGE_NOUNS})\\s*)?(?:(?:de|del|sobre|con|que sea|que tenga|donde|en la que)\\s+)?(.+)$`,
   "i"
 );
 function parseImageRequest(text) {
@@ -983,15 +1087,63 @@ function parseImageRequest(text) {
   if (!noun || /^(im|foto)/.test(noun)) return subject;
   return /^(para|con|sobre|en|estilo|que)\b/i.test(subject) ? `${noun} ${subject}` : `${noun} de ${subject}`;
 }
-function createImage(userText, prompt) {
-  runTask(userText, "Wendy está dibujando (puede tardar hasta un minuto)", async () => {
+// La última imagen que creó Wendy en esta conversación (para «otra», «cámbiale el fondo», etc.).
+let lastImage = null; // { request, prompt, seed }
+const IMAGE_AGAIN = /^(?:y |ahora |mejor |otra vez |porfa |por favor )*(?:(?:haz|hazme|crea|creame|genera|generame|dibuja|dibujame|dame|muestrame|quiero)\s+)?(?:otra|otra igual|otra parecida|otra version|otra vez la imagen|una (?:igual|parecida|similar)|otra opcion)(?: (?:igual|parecida|similar|distinta|diferente|version|opcion|por favor|porfa))*$/;
+const IMAGE_EDIT = /^(?:y |ahora |mejor |pero |tambien |porfa |por favor )*(?:hazla|hazlo|haz que|ponle|ponla|ponlo|pon(?:le)? (?:el|la|un|una)|agregale|agrega|anadele|anade|quitale|quita|cambiale|cambia|cambiala|cambialo|pintala|pintalo|dale|edita|editala|modifica|modificala|mejorala|que (?:sea|tenga|este|se vea|lleve|salga)|con (?:el|la|un|una|mas|menos)|en (?:estilo|blanco y negro|color|version|caricatura|anime|acuarela|3d|de noche|de dia)|mas |menos |sin |de noche|de dia|en la noche|al atardecer|estilo )/;
+function parseImageEdit(text) {
+  if (!lastImage) return null;
+  const n = norm(text);
+  if (IMAGE_AGAIN.test(n)) return { again: true };
+  // Solo si habla de la imagen (o justo después de crearla): «hazla más azul», «ponle un sombrero al gato».
+  const recent = lastAssistantSource() === "imagen";
+  if (IMAGE_EDIT.test(n) && (recent || /\b(imagen|dibujo|foto|ilustracion|logo|fondo)\b/.test(n))) return { change: text.trim() };
+  return null;
+}
+// Descarga la imagen y avisa si llegó (true) o no (false) antes del tiempo límite.
+function loadImage(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(() => { img.src = ""; resolve(false); }, timeoutMs);
+    img.onload = () => { clearTimeout(timer); resolve(img.naturalWidth > 0); };
+    img.onerror = () => { clearTimeout(timer); resolve(false); };
+    img.src = url;
+  });
+}
+function lastAssistantSource() {
+  const messages = activeChat()?.messages || [];
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "assistant") return messages[i].source;
+  return null;
+}
+function createImage(userText, prompt, edit = null) {
+  const label = edit ? "Wendy está cambiando la imagen" : "Wendy está dibujando (puede tardar hasta un minuto)";
+  runTask(userText, label, async () => {
+    const body = edit?.again
+      ? { prompt: lastImage.request, ready: lastImage.prompt }                       // la misma idea, otra versión
+      : edit ? { prompt: edit.change, base: lastImage.prompt, seed: lastImage.seed } // cambia la anterior
+        : { prompt };
     const data = await fetchJSON("/api/imagen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify(body)
     });
     if (!data.url) return { reply: data.reply };
-    return { reply: `Imagen de: ${prompt}`, spoken: data.reply, image: data.url, source: "imagen" };
+    // Espera a que la imagen esté lista de verdad antes de decir «¡Listo!» (el servicio gratis tarda).
+    const typing = $("#typingIndicator .message-name");
+    let url = data.url;
+    let loaded = await loadImage(url, 90000);
+    if (!loaded) {
+      if (typing) typing.textContent = "El servicio de imágenes está lento, lo intento otra vez…";
+      await new Promise((r) => setTimeout(r, 4000));
+      url = `${data.url}&intento=2`;
+      loaded = await loadImage(url, 90000);
+    }
+    if (!loaded) return { reply: "El servicio gratuito de imágenes no me la entregó a tiempo. Pídemela otra vez en un minuto, por favor." };
+    data.url = url;
+    const request = edit && !edit.again ? `${lastImage.request}, ${edit.change}` : edit ? lastImage.request : prompt;
+    lastImage = { request, prompt: data.prompt || request, seed: data.seed };
+    const title = edit?.again ? `Otra versión de: ${lastImage.request}` : edit ? `Cambié la imagen: ${edit.change}` : `Imagen de: ${prompt}`;
+    return { reply: title, spoken: data.reply, image: data.url, source: "imagen" };
   });
 }
 
@@ -1033,11 +1185,13 @@ function setLiveUI() {
 function setNarrate(on) {
   narrating = on;
   lastNarratedKey = "";
+  lastNarratedAt = 0;
   setLiveUI();
+  if (on) toast("Narración activada: te digo lo que veo en voz alta.");
 }
 async function startLive({ narrate = false } = {}) {
   if (!(await openCamera())) return false;
-  if (narrate) narrating = true;
+  if (narrate) { narrating = true; lastNarratedKey = ""; lastNarratedAt = 0; }
   if (live) { setLiveUI(); return true; }
   live = true;
   tracks = [];
@@ -1183,15 +1337,15 @@ const alertLast = new Map();     // tipo de alerta → última vez que se dijo
 let lastAlertSpokenAt = 0;
 const memoryAlertLast = new Map();
 let alertHideTimer = null;
-const ALERT_RATE = 1.3;          // las alertas se dicen más rápido
-const NARRATE_RATE = 1.2;
+const ALERT_RATE = 1.15;         // las alertas se dicen un poco más rápido
+const NARRATE_RATE = 1.05;
 
 function handleAlerts(alerts) {
   if (!alerts.length) return;
   const now = Date.now();
   // La más importante primero; cada alerta se repite como máximo cada 6 segundos (caídas cada 4).
   const fresh = alerts
-    .filter((a) => now - (alertLast.get(a.type) || 0) > (a.level >= 3 ? 4000 : 6000))
+    .filter((a) => now - (alertLast.get(a.type) || 0) > (a.level >= 3 ? 5000 : 10000))
     .sort((x, y) => y.level - x.level);
   if (!fresh.length) return;
   const top = fresh[0];
@@ -1208,10 +1362,10 @@ function handleAlerts(alerts) {
   clearTimeout(alertHideTimer);
   alertHideTimer = setTimeout(() => { banner.hidden = true; }, 3500);
   // En voz: solo si está narrando; las alertas interrumpen lo que se estaba diciendo.
-  if (narrating && now - lastAlertSpokenAt > 1200) {
+  if (narrating && now - lastAlertSpokenAt > 4000 && !speaking && (!busy || top.level >= 3)) { // ocupada (ej. dibujando): solo lo urgente
     lastAlertSpokenAt = now;
     lastNarratedAt = now;
-    speak(fresh.slice(0, 2).map((a) => a.text).join(" "), { rate: ALERT_RATE });
+    speak(fresh.slice(0, 2).map((a) => a.text).join(" "), { rate: ALERT_RATE, force: true, listen: true });
   }
 }
 
@@ -1250,15 +1404,28 @@ function drawSkeletons(mirrored) {
   }
 }
 
+// Para no calentar la computadora: unas 4 revisiones por segundo (menos si la compu es lenta),
+// y el detector de posturas solo corre cuando hay una persona a la vista.
+let tickCount = 0;
+let lastPersonAt = 0;
+let lastPoseResult = null;
 async function liveTick() {
   if (!live) return;
-  if (document.hidden || !video.videoWidth) { liveTimer = setTimeout(liveTick, 600); return; }
+  if (document.hidden || !video.videoWidth) { liveTimer = setTimeout(liveTick, 800); return; }
+  const started = performance.now();
   try {
     const mirrored = video.classList.contains("mirrored");
-    const [raw, poseResult] = await Promise.all([
-      window.WendyVision.detect(video, 0.45),
-      poseReady ? window.WendyAlerts.analyze(video).catch(() => null) : null
-    ]);
+    tickCount++;
+    const raw = await window.WendyVision.detect(video, 0.45);
+    if (raw.some((d) => d.class === "person")) lastPersonAt = Date.now();
+    const wantPose = poseReady && Date.now() - lastPersonAt < 3000;
+    let poseResult = null;
+    if (wantPose && (tickCount % 2 === 0 || !lastPoseResult)) {
+      poseResult = await window.WendyAlerts.analyze(video).catch(() => null);
+      lastPoseResult = poseResult;
+    } else if (wantPose) {
+      poseResult = lastPoseResult ? { ...lastPoseResult, alerts: [] } : null; // reutiliza la última postura
+    } else lastPoseResult = null;
     if (!live) return;
     const detections = updateTracks(raw);
     people = poseResult?.people || [];
@@ -1289,16 +1456,26 @@ async function liveTick() {
   } catch (error) {
     console.error("Modo en vivo:", error);
   }
-  liveTimer = setTimeout(liveTick, 90);
+  const spent = performance.now() - started;
+  liveTimer = setTimeout(liveTick, Math.max(LIVE_MIN_GAP, spent * 1.5));
+}
+const LIVE_MIN_GAP = 220; // ms de descanso entre revisiones
+// La narración se dice aunque la voz esté en silencio (la pediste) y deja el micrófono abierto
+// para que «Ey Wendy, deja de narrar» funcione en cualquier momento.
+function narrate(text) {
+  if (!text) return;
+  lastNarratedAt = Date.now();
+  lastNarratedKey = stableKey;
+  speak(text, { rate: NARRATE_RATE, force: true, listen: true });
 }
 function maybeNarrate(text = null) {
   if (!narrating || speaking || busy) return;
   const now = Date.now();
-  if (text) { lastNarratedAt = now; lastNarratedKey = stableKey; speak(text, { rate: NARRATE_RATE }); return; }
-  if (stableKey === lastNarratedKey || now - lastNarratedAt < 2500) return;
-  lastNarratedKey = stableKey;
-  lastNarratedAt = now;
-  speak(lastSentence, { rate: NARRATE_RATE });
+  if (text) { narrate(text); return; }
+  const changed = stableKey !== lastNarratedKey;
+  // Escena nueva: se dice (como mucho cada 4 s). Con personas a la vista se repite cada 12 s aunque no cambie.
+  if (changed ? now - lastNarratedAt < 4000 : !(people.length && now - lastNarratedAt > 12000)) return;
+  narrate(lastSentence || $("#liveLocal").textContent);
 }
 async function maybeAskGeminiLive() {
   const now = Date.now();
@@ -1336,7 +1513,7 @@ async function maybeAskGeminiLive() {
         $("#liveGemini").hidden = false;
         $("#liveGemini").textContent = data.caption;
         // Lo que hace cada persona: se dice aunque la escena no haya cambiado.
-        if (narrating && (stableKey !== lastNarratedKey || people.length) && Date.now() - lastNarratedAt > 2000) maybeNarrate(data.caption);
+        if (narrating && (stableKey !== lastNarratedKey || people.length) && Date.now() - lastNarratedAt > 6000) maybeNarrate(data.caption);
       }
     } else if (data.skip) {
       geminiAvailable = false;
@@ -1431,7 +1608,11 @@ function readVoice() {
   return { values, level: Math.min(1, level * gain), pitch: sum > 0.01 ? weighted / sum / half : 0.3 };
 }
 
+let lastVizAt = 0;
 function drawMicViz(time) {
+  // 30 cuadros por segundo (20 con el modo en vivo) son suficientes y gastan mucho menos.
+  if (time - lastVizAt < (live ? 48 : 32)) { requestAnimationFrame(drawMicViz); return; }
+  lastVizAt = time;
   const dpr = window.devicePixelRatio || 1;
   const size = Math.min(micViz.clientWidth, micViz.clientHeight) || micViz.clientWidth;
   if (size && micViz.width !== Math.round(size * dpr)) { micViz.width = micViz.height = Math.round(size * dpr); }

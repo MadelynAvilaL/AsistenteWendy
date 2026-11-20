@@ -92,7 +92,10 @@ export const BLOCKED_IMAGE = /\b(desnud\w*|porn\w*|sexo|sexual\w*|nsfw|hentai|er
 
 // Arma el enlace de la imagen. El navegador la descarga directamente de Pollinations
 // (así no hay que esperar en el servidor y funciona igual en Netlify).
-export function imageUrl(prompt, { width = 1024, height = 768 } = {}) {
-  const seed = Math.floor(Math.random() * 1e9);
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true&safe=true&seed=${seed}`;
+export function imageUrl(prompt, { width = 1024, height = 768, seed } = {}) {
+  if (!Number.isInteger(seed)) seed = Math.floor(Math.random() * 1e9);
+  return {
+    seed,
+    url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true&safe=true&seed=${seed}`
+  };
 }

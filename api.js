@@ -14,6 +14,7 @@ const INSTRUCTIONS = [
   "Tus respuestas se leen en voz alta: sé breve y natural (de una a cuatro oraciones) salvo que te pidan más detalle.",
   "No uses Markdown, tablas, listas con símbolos ni emojis.",
   "Cuando recibas una foto, es lo que la cámara de la persona está viendo en este momento. Describe con precisión lo que realmente se ve: objetos, personas (sin intentar identificar quiénes son), colores, textos legibles y el lugar. Si algo no se distingue bien, dilo.",
+  "Sí puedes crear imágenes: la aplicación las dibuja cuando la persona dice, por ejemplo, «crea una imagen de un gato», «hazme otra» o «cámbiale el fondo a azul». Si te piden una imagen o cambiar una que ya hiciste, nunca digas que no puedes; explica brevemente cómo pedirla así.",
   "Si no sabes algo o no puedes verificarlo, dilo con honestidad. No inventes datos."
 ].join(" ");
 
@@ -30,6 +31,12 @@ const IMAGE_PROMPT_INSTRUCTIONS =
   "Convierte la petición de la persona en un prompt en inglés para un generador de imágenes. " +
   "Describe el sujeto, el estilo (si no lo pide, elige uno bonito), la luz y la composición, en máximo 60 palabras. " +
   "Si la petición pide contenido sexual o desnudos, violencia gráfica o gore, odio, o una imagen realista de una persona real, " +
+  "responde únicamente la palabra BLOQUEADO. Responde solo el prompt, sin comillas ni explicaciones.";
+
+const IMAGE_EDIT_INSTRUCTIONS =
+  "Te doy el prompt en inglés de una imagen que ya se creó y un cambio que pide la persona (en español). " +
+  "Escribe el prompt completo en inglés de la imagen nueva: conserva todo lo de la anterior (sujeto, estilo, composición) y aplica el cambio. " +
+  "Máximo 70 palabras. Si el cambio pide contenido sexual o desnudos, violencia gráfica o gore, odio, o una imagen realista de una persona real, " +
   "responde únicamente la palabra BLOQUEADO. Responde solo el prompt, sin comillas ni explicaciones.";
 
 /* ---------------- Límite de uso (por persona) ---------------- */
@@ -285,17 +292,25 @@ export function createApi({ env, store }) {
       if (!request) return fail(400, "Dime qué imagen quieres que cree.");
       const refusal = "No puedo crear ese tipo de imagen. Pídeme otra cosa y con gusto la dibujo.";
       if (BLOCKED_IMAGE.test(request)) return ok({ reply: refusal });
-      // Gemini mejora el pedido y lo pasa a inglés (los generadores entienden mejor así).
-      let prompt = request;
-      if (hasGemini()) {
+      const base = String(body?.base || "").trim().slice(0, 700);   // prompt de la imagen anterior (para editarla)
+      const ready = String(body?.ready || "").trim().slice(0, 700); // «hazme otra»: el mismo prompt, otra versión
+      const seed = Number.isInteger(body?.seed) && body.seed >= 0 ? body.seed : undefined;
+      let prompt = ready || (base ? `${base}, ${request}` : request);
+      if (!ready && hasGemini()) {
+        // Gemini mejora el pedido y lo pasa a inglés (los generadores entienden mejor así).
         try {
-          const improved = await askGemini([{ role: "user", content: request }], null, { instructions: IMAGE_PROMPT_INSTRUCTIONS });
+          const improved = base
+            ? await askGemini([{ role: "user", content: `PROMPT ANTERIOR: ${base}\nCAMBIO: ${request}` }], null, { instructions: IMAGE_EDIT_INSTRUCTIONS })
+            : await askGemini([{ role: "user", content: request }], null, { instructions: IMAGE_PROMPT_INSTRUCTIONS });
           if (/^\W*BLOQUEADO\W*$/i.test(improved)) return ok({ reply: refusal });
-          prompt = improved.replace(/^["'«]|["'»]$/g, "").slice(0, 600);
+          prompt = improved.replace(/^["'«]|["'»]$/g, "").slice(0, 700);
         } catch { /* si Gemini falla, usamos el pedido tal cual */ }
       }
       if (BLOCKED_IMAGE.test(prompt)) return ok({ reply: refusal });
-      return ok({ url: imageUrl(prompt), reply: "¡Listo! Aquí está tu imagen." });
+      // Al editar se usa la misma semilla: la imagen nueva se parece a la anterior.
+      const image = imageUrl(prompt, { seed: base ? seed : undefined });
+      const reply = ready ? "¡Listo! Aquí tienes otra versión." : base ? "¡Listo! Así quedó con el cambio." : "¡Listo! Aquí está tu imagen.";
+      return ok({ url: image.url, prompt, seed: image.seed, reply });
     }
   };
 
