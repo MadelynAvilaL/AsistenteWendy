@@ -1,0 +1,17 @@
+# Configuración para publicar a Wendy en Netlify
+[build]
+  command = "npm run build"
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Encabezados de seguridad (los mismos que usa server.js en tu computadora)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval'; img-src 'self' data: blob: https://image.pollinations.ai; media-src 'self' blob: mediastream:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://*.kaggle.com https://*.kaggleusercontent.com https://image.pollinations.ai; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=(self)"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

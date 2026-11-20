@@ -1,0 +1,796 @@
+{
+  "_instrucciones": "Base de datos de Wendy. Cada tema tiene 'preguntas' (formas de preguntarlo) y 'respuestas' (Wendy elige una al azar). Puedes usar {hora}, {fecha} y {dia} dentro de una respuesta. Wendy recarga este archivo sola al guardarlo. Los temas con \"origen\": \"gemini\" los guardó Wendy automáticamente de respuestas de Gemini; los de \"origen\": \"voz\" se los enseñaste tú. Puedes corregirlos o borrarlos.",
+  "temas": [
+    {
+      "preguntas": [
+        "hola",
+        "hola wendy",
+        "buenos dias",
+        "buenas tardes",
+        "buenas noches",
+        "que tal",
+        "hey wendy",
+        "buenas"
+      ],
+      "respuestas": [
+        "¡Hola! ¿En qué te puedo ayudar?",
+        "¡Hola! Aquí estoy, dime.",
+        "¡Qué gusto escucharte! ¿Qué necesitas?"
+      ]
+    },
+    {
+      "preguntas": [
+        "como estas",
+        "como te va",
+        "como estas wendy",
+        "que tal estas",
+        "como has estado"
+      ],
+      "respuestas": [
+        "¡Muy bien, gracias por preguntar! ¿Y tú cómo estás?",
+        "Todo en orden por aquí. ¿Y tú?"
+      ]
+    },
+    {
+      "preguntas": [
+        "quien eres",
+        "como te llamas",
+        "cual es tu nombre",
+        "que eres",
+        "presentate"
+      ],
+      "respuestas": [
+        "Soy Wendy, tu asistente de voz. Puedo conversar contigo, decirte la hora, hacer cálculos, tomar fotos y decirte qué estoy viendo."
+      ]
+    },
+    {
+      "preguntas": [
+        "que puedes hacer",
+        "en que me ayudas",
+        "que sabes hacer",
+        "ayuda",
+        "que haces",
+        "como funcionas"
+      ],
+      "respuestas": [
+        "Puedo platicar contigo, decirte la hora, el clima y dónde estás, hacer cuentas, contarte chistes, crear imágenes, y con la cámara te digo qué estoy viendo, incluso en vivo. Si algo no lo sé, puedes enseñármelo. Pregúntame «¿qué comandos tienes?» para conocer más."
+      ]
+    },
+    {
+      "preguntas": [
+        "que hora es",
+        "dime la hora",
+        "me dices la hora",
+        "que horas son",
+        "hora"
+      ],
+      "respuestas": [
+        "Son las {hora}."
+      ]
+    },
+    {
+      "preguntas": [
+        "que dia es hoy",
+        "que fecha es hoy",
+        "cual es la fecha",
+        "dime la fecha",
+        "en que fecha estamos",
+        "fecha",
+        "que dia es"
+      ],
+      "respuestas": [
+        "Hoy es {fecha}."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuentame un chiste",
+        "dime un chiste",
+        "un chiste",
+        "chiste",
+        "hazme reir",
+        "sabes algun chiste"
+      ],
+      "respuestas": [
+        "¿Qué le dice un jardinero a otro? Disfrutemos mientras podamos.",
+        "¿Por qué la computadora fue al médico? Porque tenía un virus.",
+        "¿Qué hace una abeja en el gimnasio? ¡Zumba!",
+        "¿Cuál es el café más peligroso del mundo? El ex-preso.",
+        "¿Qué le dijo un techo a otro? Techo de menos.",
+        "¿Por qué el libro de matemáticas estaba triste? Porque tenía muchos problemas."
+      ]
+    },
+    {
+      "preguntas": [
+        "gracias",
+        "muchas gracias",
+        "gracias wendy",
+        "te lo agradezco",
+        "muy amable"
+      ],
+      "respuestas": [
+        "¡Con mucho gusto!",
+        "¡Para eso estoy!",
+        "¡De nada! Aquí estoy si necesitas algo más."
+      ]
+    },
+    {
+      "preguntas": [
+        "adios",
+        "hasta luego",
+        "nos vemos",
+        "chao",
+        "bye",
+        "hasta manana",
+        "buenas noches wendy"
+      ],
+      "respuestas": [
+        "¡Hasta luego! Que te vaya muy bien.",
+        "¡Nos vemos pronto!"
+      ]
+    },
+    {
+      "preguntas": [
+        "quien te creo",
+        "quien te hizo",
+        "quien es tu creadora",
+        "quien te programo"
+      ],
+      "respuestas": [
+        "Me creó Madelynn como su proyecto de asistente de voz."
+      ]
+    },
+    {
+      "preguntas": [
+        "te quiero",
+        "te amo",
+        "eres la mejor",
+        "me caes bien"
+      ],
+      "respuestas": [
+        "¡Qué lindo! Yo también disfruto platicar contigo."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es la capital de guatemala",
+        "capital de guatemala"
+      ],
+      "respuestas": [
+        "La capital de Guatemala es la Ciudad de Guatemala."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el ave nacional de guatemala",
+        "ave nacional de guatemala",
+        "cual es el ave de guatemala"
+      ],
+      "respuestas": [
+        "El ave nacional de Guatemala es el quetzal."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es la flor nacional de guatemala",
+        "flor nacional de guatemala"
+      ],
+      "respuestas": [
+        "La flor nacional de Guatemala es la monja blanca."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el arbol nacional de guatemala",
+        "arbol nacional de guatemala"
+      ],
+      "respuestas": [
+        "El árbol nacional de Guatemala es la ceiba."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es la moneda de guatemala",
+        "moneda de guatemala",
+        "como se llama la moneda de guatemala"
+      ],
+      "respuestas": [
+        "La moneda de Guatemala es el quetzal."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuando es la independencia de guatemala",
+        "independencia de guatemala",
+        "cuando se independizo guatemala"
+      ],
+      "respuestas": [
+        "Guatemala celebra su independencia el 15 de septiembre; se firmó en 1821."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos departamentos tiene guatemala",
+        "departamentos de guatemala"
+      ],
+      "respuestas": [
+        "Guatemala tiene 22 departamentos."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es la inteligencia artificial",
+        "que es ia",
+        "que es la ia"
+      ],
+      "respuestas": [
+        "La inteligencia artificial es una rama de la informática que crea programas capaces de aprender, reconocer patrones y tomar decisiones, como reconocer voces o imágenes."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es un algoritmo",
+        "que es algoritmo"
+      ],
+      "respuestas": [
+        "Un algoritmo es una serie de pasos ordenados para resolver un problema, como una receta de cocina pero para una computadora."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es una base de datos",
+        "que es base de datos"
+      ],
+      "respuestas": [
+        "Una base de datos es un lugar organizado donde se guarda información para poder buscarla y usarla después. Yo tengo una con las cosas que sé."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el planeta mas grande",
+        "planeta mas grande del sistema solar"
+      ],
+      "respuestas": [
+        "El planeta más grande del sistema solar es Júpiter."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos planetas hay en el sistema solar",
+        "cuantos planetas hay"
+      ],
+      "respuestas": [
+        "El sistema solar tiene ocho planetas: Mercurio, Venus, Tierra, Marte, Júpiter, Saturno, Urano y Neptuno."
+      ]
+    },
+    {
+      "preguntas": [
+        "dame un consejo para estudiar",
+        "como puedo estudiar mejor",
+        "consejo para estudiar",
+        "tips para estudiar"
+      ],
+      "respuestas": [
+        "Estudia en bloques de 25 minutos con 5 de descanso, explica el tema en voz alta como si se lo enseñaras a alguien, y repasa al día siguiente. Funciona muy bien."
+      ]
+    },
+    {
+      "preguntas": [
+        "estoy aburrida",
+        "estoy aburrido",
+        "me aburro",
+        "que hago"
+      ],
+      "respuestas": [
+        "¿Qué tal si me pides un chiste, o me enseñas algo nuevo? También puedes mostrarme algo con la cámara y te digo qué veo."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos anos tienes",
+        "que edad tienes",
+        "cuando naciste"
+      ],
+      "respuestas": [
+        "Soy un programa, así que no tengo edad como las personas. Me crearon en 2026."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es tu color favorito",
+        "que color te gusta"
+      ],
+      "respuestas": [
+        "Si pudiera elegir, sería el morado, como los colores de mi pantalla."
+      ]
+    },
+    {
+      "preguntas": [
+        "donde vives",
+        "de donde eres"
+      ],
+      "respuestas": [
+        "Vivo dentro de esta computadora, pero me siento muy guatemalteca."
+      ]
+    },
+    {
+      "preguntas": [
+        "eres una persona",
+        "eres humana",
+        "eres real",
+        "eres un robot"
+      ],
+      "respuestas": [
+        "No, soy un programa de computadora. No tengo cuerpo ni sentimientos, pero me encanta ayudarte."
+      ]
+    },
+    {
+      "preguntas": [
+        "que comandos tienes",
+        "que comandos puedo usar",
+        "que te puedo decir",
+        "comandos"
+      ],
+      "respuestas": [
+        "Puedes decirme: ¿qué estás viendo?, modo en vivo, narra lo que ves, abre la cámara, ¿dónde estoy?, ¿qué clima hace?, ¿va a llover mañana?, dibuja un gato astronauta, repite, habla más lento, más fuerte, nueva conversación, silencio, y con esto terminamos para que deje de escuchar."
+      ]
+    },
+    {
+      "preguntas": [
+        "estoy triste",
+        "me siento triste",
+        "me siento mal",
+        "estoy deprimida",
+        "estoy deprimido"
+      ],
+      "respuestas": [
+        "Lamento que te sientas así. Hablar con alguien de confianza, como tu familia o un amigo, puede ayudar mucho. Si quieres, también puedo contarte un chiste o platicar un rato."
+      ]
+    },
+    {
+      "preguntas": [
+        "estoy cansada",
+        "estoy cansado",
+        "tengo sueno"
+      ],
+      "respuestas": [
+        "Descansar también es productivo. Toma agua, estírate un poco y date un respiro.",
+        "Quizá sea buen momento para una pausa. ¡Te la ganaste!"
+      ]
+    },
+    {
+      "preguntas": [
+        "estoy feliz",
+        "estoy contenta",
+        "estoy contento",
+        "me fue bien"
+      ],
+      "respuestas": [
+        "¡Qué alegría! Me encanta escuchar eso.",
+        "¡Excelente! Celebra ese momento."
+      ]
+    },
+    {
+      "preguntas": [
+        "dame animo",
+        "motivame",
+        "dame una frase motivadora",
+        "frase motivadora",
+        "necesito motivacion"
+      ],
+      "respuestas": [
+        "Cada pequeño paso cuenta. No tienes que hacerlo perfecto, solo seguir avanzando.",
+        "Lo que hoy te cuesta, mañana será tu fortaleza.",
+        "Cree en ti: ya has superado días difíciles antes."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el volcan mas alto de guatemala",
+        "volcan mas alto de guatemala",
+        "volcan mas alto de centroamerica"
+      ],
+      "respuestas": [
+        "El volcán Tajumulco, en San Marcos, es el más alto de Guatemala y de Centroamérica, con unos 4,220 metros."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es tikal",
+        "donde esta tikal",
+        "tikal"
+      ],
+      "respuestas": [
+        "Tikal es una gran ciudad maya en Petén. Es Patrimonio de la Humanidad desde 1979 y tiene templos impresionantes en medio de la selva."
+      ]
+    },
+    {
+      "preguntas": [
+        "donde esta el lago de atitlan",
+        "lago de atitlan",
+        "que volcanes rodean el lago de atitlan"
+      ],
+      "respuestas": [
+        "El lago de Atitlán está en Sololá y lo rodean tres volcanes: Atitlán, Tolimán y San Pedro."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el lago mas grande de guatemala",
+        "lago mas grande de guatemala"
+      ],
+      "respuestas": [
+        "El lago más grande de Guatemala es el lago de Izabal."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos idiomas se hablan en guatemala",
+        "idiomas de guatemala",
+        "cuantos idiomas mayas hay en guatemala"
+      ],
+      "respuestas": [
+        "En Guatemala se reconocen 22 idiomas mayas, además del garífuna, el xinka y el español."
+      ]
+    },
+    {
+      "preguntas": [
+        "quien escribio el himno nacional de guatemala",
+        "autor del himno de guatemala",
+        "himno nacional de guatemala"
+      ],
+      "respuestas": [
+        "La letra del Himno Nacional de Guatemala es de José Joaquín Palma y la música de Rafael Álvarez Ovalle."
+      ]
+    },
+    {
+      "preguntas": [
+        "que premios nobel tiene guatemala",
+        "guatemaltecos premio nobel",
+        "premio nobel guatemala"
+      ],
+      "respuestas": [
+        "Guatemala tiene dos premios Nobel: Miguel Ángel Asturias, de Literatura en 1967, y Rigoberta Menchú, de la Paz en 1992."
+      ]
+    },
+    {
+      "preguntas": [
+        "comida tipica de guatemala",
+        "platillos tipicos de guatemala",
+        "que se come en guatemala"
+      ],
+      "respuestas": [
+        "Algunos platillos típicos son el pepián, el kak'ik, los tamales, los chuchitos, las hilachas y los rellenitos de plátano."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es antigua guatemala",
+        "antigua guatemala"
+      ],
+      "respuestas": [
+        "Antigua Guatemala fue capital del Reino de Guatemala. Es famosa por su arquitectura colonial y es Patrimonio de la Humanidad desde 1979."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el rio mas largo de guatemala",
+        "rio mas largo de guatemala"
+      ],
+      "respuestas": [
+        "El Motagua es el río más largo que corre completamente dentro de Guatemala."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuales son los departamentos de guatemala",
+        "nombres de los departamentos de guatemala"
+      ],
+      "respuestas": [
+        "Son 22: Alta Verapaz, Baja Verapaz, Chimaltenango, Chiquimula, El Progreso, Escuintla, Guatemala, Huehuetenango, Izabal, Jalapa, Jutiapa, Petén, Quetzaltenango, Quiché, Retalhuleu, Sacatepéquez, San Marcos, Santa Rosa, Sololá, Suchitepéquez, Totonicapán y Zacapa."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el oceano mas grande",
+        "oceano mas grande del mundo"
+      ],
+      "respuestas": [
+        "El océano más grande es el Pacífico."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el continente mas grande",
+        "continente mas grande"
+      ],
+      "respuestas": [
+        "El continente más grande es Asia."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el pais mas grande del mundo",
+        "pais mas grande del mundo"
+      ],
+      "respuestas": [
+        "El país más grande del mundo por territorio es Rusia."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es la montana mas alta del mundo",
+        "montana mas alta del mundo"
+      ],
+      "respuestas": [
+        "La montaña más alta del mundo es el monte Everest, con unos 8,849 metros sobre el nivel del mar."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el rio mas largo del mundo",
+        "rio mas largo del mundo"
+      ],
+      "respuestas": [
+        "Se discute entre el Nilo y el Amazonas; según cómo se mida, uno u otro resulta el más largo."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el planeta mas cercano al sol",
+        "planeta mas cercano al sol"
+      ],
+      "respuestas": [
+        "El planeta más cercano al Sol es Mercurio."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es el planeta rojo",
+        "por que marte es rojo"
+      ],
+      "respuestas": [
+        "Marte es el planeta rojo; su color viene del óxido de hierro en su superficie, como si estuviera oxidado."
+      ]
+    },
+    {
+      "preguntas": [
+        "el sol es una estrella",
+        "que es el sol"
+      ],
+      "respuestas": [
+        "Sí, el Sol es una estrella: una enorme esfera de gas muy caliente que nos da luz y calor."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es la fotosintesis",
+        "como hacen su comida las plantas"
+      ],
+      "respuestas": [
+        "La fotosíntesis es el proceso con el que las plantas usan la luz del sol, el agua y el dióxido de carbono para producir su alimento y liberar oxígeno."
+      ]
+    },
+    {
+      "preguntas": [
+        "a cuantos grados hierve el agua",
+        "temperatura de ebullicion del agua"
+      ],
+      "respuestas": [
+        "Al nivel del mar, el agua hierve a 100 grados Celsius. En lugares altos, como la Ciudad de Guatemala, hierve un poco antes."
+      ]
+    },
+    {
+      "preguntas": [
+        "cual es la velocidad de la luz",
+        "que tan rapido va la luz"
+      ],
+      "respuestas": [
+        "La luz viaja a casi 300,000 kilómetros por segundo."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos huesos tiene el cuerpo humano",
+        "cuantos huesos tenemos"
+      ],
+      "respuestas": [
+        "Un adulto tiene 206 huesos. Los bebés nacen con más, pero algunos se unen al crecer."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantas cavidades tiene el corazon",
+        "partes del corazon"
+      ],
+      "respuestas": [
+        "El corazón tiene cuatro cavidades: dos aurículas y dos ventrículos."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es el adn",
+        "adn"
+      ],
+      "respuestas": [
+        "El ADN es la molécula que guarda las instrucciones para formar y hacer funcionar a los seres vivos."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos dias tiene un ano",
+        "dias de un ano"
+      ],
+      "respuestas": [
+        "Un año tiene 365 días, y 366 en los años bisiestos."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuantos continentes hay",
+        "cuales son los continentes"
+      ],
+      "respuestas": [
+        "Normalmente se cuentan cinco: América, Europa, Asia, África y Oceanía. Algunos también cuentan la Antártida."
+      ]
+    },
+    {
+      "preguntas": [
+        "cuanto vale pi",
+        "que es pi",
+        "numero pi"
+      ],
+      "respuestas": [
+        "Pi vale aproximadamente 3,1416. Es la relación entre la circunferencia de un círculo y su diámetro."
+      ]
+    },
+    {
+      "preguntas": [
+        "como se saca el area de un circulo",
+        "area del circulo"
+      ],
+      "respuestas": [
+        "El área de un círculo es pi por el radio al cuadrado."
+      ]
+    },
+    {
+      "preguntas": [
+        "como se saca el area de un triangulo",
+        "area del triangulo"
+      ],
+      "respuestas": [
+        "El área de un triángulo es base por altura, dividido entre dos."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es el teorema de pitagoras",
+        "teorema de pitagoras"
+      ],
+      "respuestas": [
+        "En un triángulo rectángulo, la hipotenusa al cuadrado es igual a la suma de los cuadrados de los catetos."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es un numero primo",
+        "numeros primos"
+      ],
+      "respuestas": [
+        "Un número primo solo se puede dividir exactamente entre uno y entre sí mismo, como 2, 3, 5, 7 y 11."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es html",
+        "html"
+      ],
+      "respuestas": [
+        "HTML es el lenguaje que da estructura a las páginas web: títulos, párrafos, botones e imágenes."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es css",
+        "css"
+      ],
+      "respuestas": [
+        "CSS es el lenguaje que le da estilo a las páginas web: colores, tamaños, fuentes y acomodo."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es javascript",
+        "javascript"
+      ],
+      "respuestas": [
+        "JavaScript es el lenguaje que hace que las páginas web sean interactivas, como yo cuando te respondo."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es node",
+        "que es nodejs",
+        "node js"
+      ],
+      "respuestas": [
+        "Node.js permite ejecutar JavaScript fuera del navegador, por ejemplo para crear servidores como el mío."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es una api",
+        "api"
+      ],
+      "respuestas": [
+        "Una API es una forma en que dos programas se comunican; por ejemplo, yo uso una API para preguntarle cosas a Gemini."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es programar",
+        "que es la programacion"
+      ],
+      "respuestas": [
+        "Programar es escribir instrucciones para que una computadora haga una tarea."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es hardware",
+        "que es software",
+        "diferencia entre hardware y software"
+      ],
+      "respuestas": [
+        "El hardware es la parte física de la computadora, como el teclado o la pantalla; el software son los programas, como yo."
+      ]
+    },
+    {
+      "preguntas": [
+        "que es internet"
+      ],
+      "respuestas": [
+        "Internet es una red mundial que conecta millones de computadoras para compartir información."
+      ]
+    },
+    {
+      "preguntas": [
+        "otro chiste",
+        "cuentame otro chiste",
+        "otro"
+      ],
+      "respuestas": [
+        "¿Qué le dijo el número 1 al 10? Para ser como yo, tienes que ser sincero.",
+        "¿Por qué los pájaros no usan Facebook? Porque ya tienen Twitter.",
+        "¿Qué hace un perro con un taladro? Taladrando.",
+        "¿Cómo se despiden los químicos? Ácido un placer.",
+        "Había una vez un pollito que se llamaba Pollo. Fin, porque es muy corto."
+      ]
+    },
+    {
+      "preguntas": [
+        "dime un dato curioso",
+        "cuentame algo interesante",
+        "dato curioso",
+        "curiosidad"
+      ],
+      "respuestas": [
+        "Los pulpos tienen tres corazones.",
+        "La miel nunca se echa a perder si está bien guardada.",
+        "Un día en Venus dura más que un año en Venus.",
+        "Las nutrias se toman de las manos al dormir para no separarse.",
+        "El quetzal macho puede tener plumas de la cola de más de 60 centímetros."
+      ]
+    },
+    {
+      "preguntas": [
+        "adivinanza",
+        "dime una adivinanza"
+      ],
+      "respuestas": [
+        "Blanco por dentro, verde por fuera; si quieres que te lo diga, espera. ¡La pera!",
+        "Tiene dientes y no come, tiene cabeza y no es hombre. ¡El ajo!"
+      ]
+    }
+  ]
+}
