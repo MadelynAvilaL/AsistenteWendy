@@ -213,3 +213,5 @@ body.wendy-thinking .mic-state { color: var(--purple); }
 .new-chat-btn { display: inline-flex; align-items: center; gap: 6px; }
 .new-chat-btn svg { width: 16px; height: 16px; }
 @media (max-width: 900px) { .new-chat-btn { padding: 8px 10px; font-size: 0; gap: 0; } .new-chat-btn svg { width: 18px; height: 18px; } }
+
+.code-error { color: #ff9bb3 !important; font-weight: 700; }

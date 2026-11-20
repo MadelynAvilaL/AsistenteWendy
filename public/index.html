@@ -119,9 +119,10 @@
   <div class="overlay" id="codeOverlay" hidden>
     <form class="overlay-card" id="codeForm">
       <span class="overlay-orb">W</span>
-      <strong>Código de acceso</strong>
-      <small>Esta Wendy es privada. Escribe el código que te dieron.</small>
-      <input id="codeInput" type="password" autocomplete="off" placeholder="Código" aria-label="Código de acceso">
+      <strong>Escribe el PIN</strong>
+      <small>Para usar a Wendy necesitas el PIN que te compartieron.</small>
+      <input id="codeInput" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN de acceso">
+      <small class="code-error" id="codeError" hidden>PIN incorrecto. Inténtalo de nuevo.</small>
       <button class="pill primary" type="submit">Entrar</button>
     </form>
   </div>

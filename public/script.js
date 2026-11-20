@@ -19,6 +19,13 @@ const voiceBannerText = $("#voiceBannerText");
 const STORAGE_KEY = "wendy_conversations_v1";
 const VOICE_KEY = "wendy_voice_on";
 
+/* ---------------- Tipo de dispositivo ---------------- */
+// En tablets y celulares el micrófono solo lo puede usar una cosa a la vez:
+// ahí el anillo no abre el micrófono, para no quitárselo al reconocimiento de voz.
+const IS_TOUCH_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+let userVoiceUntil = 0; // hasta cuándo animar el anillo porque el reconocimiento oyó tu voz
+
 /* ---------------- Conexión con el servidor ---------------- */
 const CODE_KEY = "wendy_codigo";
 let accessCode = localStorage.getItem(CODE_KEY) || "";
@@ -405,7 +412,10 @@ function startRecognition(mode) {
   recognition = rec;
   recMode = mode;
 
+  rec.onspeechstart = () => { userVoiceUntil = Date.now() + 1500; };
+  rec.onsoundstart = () => { userVoiceUntil = Math.max(userVoiceUntil, Date.now() + 600); };
   rec.onresult = (event) => {
+    userVoiceUntil = Date.now() + 900;
     let interim = "";
     let final = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1360,6 +1370,7 @@ const BARS = 96;
 const barValues = new Array(BARS).fill(0);
 
 async function startMeter() {
+  if (IS_TOUCH_DEVICE) return; // en tablet/celular el anillo se anima con el reconocimiento de voz
   if (analyser || meterStarting || !navigator.mediaDevices?.getUserMedia) return;
   meterStarting = true;
   try {
@@ -1378,9 +1389,11 @@ async function startMeter() {
   }
 }
 // El navegador pide un toque antes de activar el audio: lo aprovechamos.
-document.addEventListener("pointerdown", () => {
+document.addEventListener("pointerdown", (event) => {
   if (audioCtx?.state === "suspended") audioCtx.resume();
   startMeter();
+  // Algunos navegadores (sobre todo en tablet) no dejan escuchar hasta que tocas la página: con el primer toque se activa «Ey Wendy».
+  if (!wakeMode && wakePref() && SpeechRec && !navigator.brave && !event.target.closest?.("#wakeToggle, #micButton")) setWake(true, { quiet: true });
 }, { passive: true });
 
 // Lee el micrófono y reparte la voz en todo el círculo (no solo arriba).
@@ -1445,6 +1458,11 @@ function drawMicViz(time) {
       target = voice.values;
       level = voice.level;
       hue = 290 + Math.min(1, voice.pitch * 1.6) * 40; // grave = morado, agudo = rosa
+    } else if (Date.now() < userVoiceUntil) {
+      // Sin medidor (tablet/celular): el reconocimiento oyó tu voz → el anillo se mueve
+      for (let i = 0; i < BARS; i++) target[i] = 0.3 + 0.5 * Math.abs(Math.sin(time / 120 + i * 0.5) * Math.cos(time / 230 + i * 0.13));
+      level = 0.4 + 0.15 * Math.sin(time / 110);
+      hue = 305;
     } else {
       level = 0.04;
     }
@@ -1543,13 +1561,26 @@ $("#newChat")?.addEventListener("click", () => {
   toast("Empezamos una conversación nueva.");
 });
 $("#liveQuick").addEventListener("click", () => (live ? stopLive() : startLive()));
-$("#codeForm").addEventListener("submit", (event) => {
+$("#codeForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  accessCode = $("#codeInput").value.trim();
-  localStorage.setItem(CODE_KEY, accessCode);
-  $("#codeOverlay").hidden = true;
-  checkStatus();
-  toast("Código guardado. ¡Hola!");
+  const pin = $("#codeInput").value.trim();
+  if (!pin) return;
+  // Se comprueba con el servidor antes de dejar pasar.
+  const response = await fetch("/api/verificar", { headers: { "x-wendy-codigo": pin } }).catch(() => null);
+  if (response?.ok) {
+    accessCode = pin;
+    localStorage.setItem(CODE_KEY, accessCode);
+    $("#codeOverlay").hidden = true;
+    $("#codeError").hidden = true;
+    $("#codeInput").value = "";
+    checkStatus();
+    toast("¡Bienvenida! Ya puedes hablar con Wendy.");
+    speak("¡Hola! Ya estoy lista. Di «Ey Wendy» cuando me necesites.");
+  } else {
+    $("#codeError").textContent = response?.status === 429 ? "Demasiados intentos. Espera un minuto." : "PIN incorrecto. Inténtalo de nuevo.";
+    $("#codeError").hidden = false;
+    $("#codeInput").select();
+  }
 });
 document.querySelectorAll(".suggestion").forEach((button) => {
   button.addEventListener("click", () => {
@@ -1566,7 +1597,11 @@ async function checkStatus() {
     const response = await fetch("/api/status");
     const data = await response.json();
     geminiAvailable = Boolean(data.gemini);
-    if (data.needsCode && !accessCode) askForCode();
+    if (data.needsCode) {
+      // Si hay PIN guardado se comprueba (por si lo cambiaste); si no, se pide.
+      const valid = accessCode && (await fetch("/api/verificar", { headers: { "x-wendy-codigo": accessCode } }).catch(() => null))?.ok;
+      if (!valid) { accessCode = ""; localStorage.removeItem(CODE_KEY); askForCode(); }
+    }
     $("#connectionText").textContent = data.gemini ? "Conectada · base de datos + Gemini" : "Conectada · modo sin IA";
     document.querySelector(".status-dot").style.background = data.gemini ? "#5ef2c2" : "#7cc8ff";
     window.WendyVision?.preload(); // deja listo el reconocimiento de objetos por si Gemini falla

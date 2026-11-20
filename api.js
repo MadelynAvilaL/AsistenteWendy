@@ -147,6 +147,8 @@ export function createApi({ env, store }) {
   /* ---------------- Rutas ---------------- */
   const routes = {
     "GET /api/status": async () => ok({ name: "WENDY", gemini: hasGemini(), needsCode: Boolean(ACCESS_CODE), storage: store.kind }),
+    // Comprueba el PIN (si es incorrecto, handle ya respondió 401).
+    "GET /api/verificar": async () => ok({ ok: true }),
 
     "POST /api/chat": async ({ body }) => {
       const { messages, timeZone } = body || {};
@@ -297,18 +299,19 @@ export function createApi({ env, store }) {
     }
   };
 
-  const LIMITS = { "/api/chat": 30, "/api/live": 15, "/api/imagen": 6, "/api/weather": 20, "/api/location": 20 };
+  const LIMITS = { "/api/verificar": 8, "/api/chat": 30, "/api/live": 15, "/api/imagen": 6, "/api/weather": 20, "/api/location": 20 };
 
   // Atiende una petición. Devuelve { status, body }.
   async function handle({ method, path, query = {}, body = {}, ip = "local", headers = {} }) {
     const route = routes[`${method} ${path.replace(/\/+$/, "")}`];
     if (!route) return fail(404, "Ruta no encontrada.");
-    if (path !== "/api/status" && ACCESS_CODE && (headers["x-wendy-codigo"] || "").trim() !== ACCESS_CODE) {
-      return fail(401, "Código de acceso incorrecto.");
-    }
+    // Primero el límite (así nadie puede probar PINs sin parar), después el PIN.
     const limit = LIMITS[path];
     if (limit && tooMany(`${ip}|${path}`, limit)) {
       return fail(429, "Has enviado muchas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo.");
+    }
+    if (path !== "/api/status" && ACCESS_CODE && (headers["x-wendy-codigo"] || "").trim() !== ACCESS_CODE) {
+      return fail(401, "PIN incorrecto.");
     }
     try {
       return await route({ query, body, headers });
