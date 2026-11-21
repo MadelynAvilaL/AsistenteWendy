@@ -92,10 +92,15 @@ export const BLOCKED_IMAGE = /\b(desnud\w*|porn\w*|sexo|sexual\w*|nsfw|hentai|er
 
 // Arma el enlace de la imagen. El navegador la descarga directamente de Pollinations
 // (así no hay que esperar en el servidor y funciona igual en Netlify).
-export function imageUrl(prompt, { width = 1024, height = 768, seed } = {}) {
+// - Sin clave: se usa el servicio gratuito sin registro (image.pollinations.ai), que acepta ~1 pedido cada 15 s.
+// - Con POLLINATIONS_KEY (clave pública «pk_…» gratis en https://enter.pollinations.ai): más rápido y estable.
+export function imageUrl(prompt, { width = 1024, height = 768, seed, key = "" } = {}) {
   if (!Number.isInteger(seed)) seed = Math.floor(Math.random() * 1e9);
-  return {
-    seed,
-    url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true&safe=true&seed=${seed}`
-  };
+  const text = encodeURIComponent(prompt);
+  const common = `width=${width}&height=${height}&seed=${seed}&nologo=true&safe=true&model=flux&referrer=wendy-ia`;
+  const free = `https://image.pollinations.ai/prompt/${text}?${common}`;
+  const urls = key ? [`https://gen.pollinations.ai/image/${text}?${common}&key=${encodeURIComponent(key)}`, free] : [free];
+  // Copia de respaldo más pequeña (sale más rápido cuando el servicio está saturado).
+  urls.push(`https://image.pollinations.ai/prompt/${text}?width=768&height=576&seed=${seed + 1}&nologo=true&safe=true&referrer=wendy-ia`);
+  return { seed, url: urls[0], backups: urls.slice(1) };
 }

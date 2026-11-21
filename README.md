@@ -177,3 +177,14 @@ Sin Supabase, la versión web funciona pero olvida lo aprendido cada cierto tiem
 ### ¿Por qué el código de acceso?
 Si tu Wendy es pública, cualquiera con el enlace podría usar tu límite gratuito de Gemini.
 Con `WENDY_CODIGO`, la página pide el código una vez en cada navegador. Compártelo solo con quien quieras.
+
+## Manos libres: cómo controlar a Wendy solo con la voz
+
+- **Despertarla:** «Ey Wendy…» y luego tu pedido. Después tienes 20 segundos para seguir hablando sin repetir su nombre.
+- **Callarla en cualquier momento** (aunque esté hablando o narrando, sin decir «Wendy»): «para», «basta», «silencio», «cállate», «deja de hablar».
+- **Apagar la cámara:** «apaga la cámara», «cierra la cámara», «ya no veas», «apaga todo».
+- **Dejar de narrar pero seguir viendo:** «deja de narrar».
+- **Cancelar algo que tarda** (por ejemplo una imagen): «Wendy, cancela».
+- **Imágenes:** «crea / dibújame / hazme / ¿me puedes hacer… una imagen de…». Wendy avisa enseguida que la está dibujando.
+- La narración en vivo solo habla cuando la escena cambia de verdad y no repite lo mismo en 90 segundos.
+- Opcional: con `POLLINATIONS_KEY` en `.env` (clave pública gratis de https://enter.pollinations.ai) las imágenes salen más rápido.

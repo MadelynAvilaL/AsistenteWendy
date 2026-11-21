@@ -134,10 +134,17 @@
         "quien te creo",
         "quien te hizo",
         "quien es tu creadora",
-        "quien te programo"
+        "quien te programo",
+        "quienes te crearon",
+        "quienes te hicieron",
+        "quienes son tus creadoras",
+        "quien te desarrollo",
+        "quien te diseno",
+        "por quien fuiste creada",
+        "fuiste creada por"
       ],
       "respuestas": [
-        "Me creó Madelynn como su proyecto de asistente de voz."
+        "Fui creada por las alumnas de quinto bachillerato en computación. Ellas realizaron este proyecto."
       ]
     },
     {

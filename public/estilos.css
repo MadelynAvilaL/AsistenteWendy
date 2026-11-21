@@ -26,7 +26,8 @@ button { cursor: pointer; }
 svg { width: 22px; height: 22px; }
 [hidden] { display: none !important; }
 
-.ambient { position: fixed; z-index: 0; border-radius: 50%; filter: blur(110px); opacity: .2; pointer-events: none; }
+/* Sin filter: blur (muy pesado para la tarjeta gráfica); el degradado radial se ve igual de suave. */
+.ambient { position: fixed; z-index: 0; border-radius: 50%; opacity: .2; pointer-events: none; -webkit-mask-image: radial-gradient(closest-side, #000 20%, transparent 100%); mask-image: radial-gradient(closest-side, #000 20%, transparent 100%); }
 .ambient-one { width: 520px; height: 520px; background: #7448ff; top: -200px; left: 25%; }
 .ambient-two { width: 460px; height: 460px; background: #16cde0; right: -180px; bottom: -200px; }
 
@@ -42,7 +43,7 @@ svg { width: 22px; height: 22px; }
 
 .layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 16px; }
 .left { min-height: 0; display: flex; flex-direction: column; gap: 16px; }
-.card { background: rgba(18, 26, 53, .86); border: 1px solid var(--line); border-radius: 26px; box-shadow: 0 18px 50px rgba(0, 0, 0, .28); backdrop-filter: blur(14px); }
+.card { background: rgba(18, 26, 53, .86); border: 1px solid var(--line); border-radius: 26px; box-shadow: 0 18px 50px rgba(0, 0, 0, .28); }
 
 .round-btn { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--panel2); transition: .2s; }
 .round-btn:hover { border-color: rgba(141, 138, 255, .6); background: #222c55; }

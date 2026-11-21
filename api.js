@@ -9,12 +9,12 @@ const IMAGE_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/;
 const MAX_IMAGE_CHARS = 6 * 1024 * 1024;
 
 const INSTRUCTIONS = [
-  "Tu nombre es Wendy. Eres una asistente de voz al estilo de Alexa: amable, clara, cálida y respetuosa. Te creó Madelynn.",
+  "Tu nombre es Wendy. Eres una asistente de voz al estilo de Alexa: amable, clara, cálida y respetuosa. Te crearon las alumnas de quinto bachillerato en computación: si te preguntan quién te creó, responde que fuiste creada por las alumnas de quinto bachillerato en computación, que realizaron este proyecto. No menciones ningún nombre propio como tu creadora.",
   "Responde en el idioma que use la persona, normalmente español de Guatemala.",
   "Tus respuestas se leen en voz alta: sé breve y natural (de una a cuatro oraciones) salvo que te pidan más detalle.",
   "No uses Markdown, tablas, listas con símbolos ni emojis.",
   "Cuando recibas una foto, es lo que la cámara de la persona está viendo en este momento. Describe con precisión lo que realmente se ve: objetos, personas (sin intentar identificar quiénes son), colores, textos legibles y el lugar. Si algo no se distingue bien, dilo.",
-  "Sí puedes crear imágenes: la aplicación las dibuja cuando la persona dice, por ejemplo, «crea una imagen de un gato», «hazme otra» o «cámbiale el fondo a azul». Si te piden una imagen o cambiar una que ya hiciste, nunca digas que no puedes; explica brevemente cómo pedirla así.",
+  "Sí puedes crear imágenes: la aplicación las dibuja cuando la persona dice, por ejemplo, «crea una imagen de un gato», «hazme otra» o «cámbiale el fondo a azul». Si te piden una imagen o cambiar una que ya hiciste, nunca digas que no puedes; explica brevemente cómo pedirla así. Nunca digas «ahorita la hago» ni prometas hacerla tú: la imagen solo se crea cuando la persona la pide con esas palabras.",
   "Si no sabes algo o no puedes verificarlo, dilo con honestidad. No inventes datos."
 ].join(" ");
 
@@ -73,7 +73,7 @@ export function createApi({ env, store }) {
     return contents;
   }
 
-  async function askGemini(messages, image, { models, instructions = INSTRUCTIONS, json = false } = {}) {
+  async function askGemini(messages, image, { models, instructions = INSTRUCTIONS, json = false, timeout = 25000 } = {}) {
     const contents = toGeminiContents(messages, image);
     let lastError;
     for (const model of models || (image ? VISION_MODELS : TEXT_MODELS)) {
@@ -86,7 +86,7 @@ export function createApi({ env, store }) {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY },
             body: JSON.stringify(body),
-            signal: AbortSignal.timeout(25000)
+            signal: AbortSignal.timeout(timeout)
           }
         );
         const data = await response.json().catch(() => ({}));
@@ -300,17 +300,17 @@ export function createApi({ env, store }) {
         // Gemini mejora el pedido y lo pasa a inglés (los generadores entienden mejor así).
         try {
           const improved = base
-            ? await askGemini([{ role: "user", content: `PROMPT ANTERIOR: ${base}\nCAMBIO: ${request}` }], null, { instructions: IMAGE_EDIT_INSTRUCTIONS })
-            : await askGemini([{ role: "user", content: request }], null, { instructions: IMAGE_PROMPT_INSTRUCTIONS });
+            ? await askGemini([{ role: "user", content: `PROMPT ANTERIOR: ${base}\nCAMBIO: ${request}` }], null, { instructions: IMAGE_EDIT_INSTRUCTIONS, timeout: 10000 })
+            : await askGemini([{ role: "user", content: request }], null, { instructions: IMAGE_PROMPT_INSTRUCTIONS, timeout: 10000 });
           if (/^\W*BLOQUEADO\W*$/i.test(improved)) return ok({ reply: refusal });
           prompt = improved.replace(/^["'«]|["'»]$/g, "").slice(0, 700);
         } catch { /* si Gemini falla, usamos el pedido tal cual */ }
       }
       if (BLOCKED_IMAGE.test(prompt)) return ok({ reply: refusal });
       // Al editar se usa la misma semilla: la imagen nueva se parece a la anterior.
-      const image = imageUrl(prompt, { seed: base ? seed : undefined });
+      const image = imageUrl(prompt, { seed: base ? seed : undefined, key: (env.POLLINATIONS_KEY || "").trim() });
       const reply = ready ? "¡Listo! Aquí tienes otra versión." : base ? "¡Listo! Así quedó con el cambio." : "¡Listo! Aquí está tu imagen.";
-      return ok({ url: image.url, prompt, seed: image.seed, reply });
+      return ok({ url: image.url, backups: image.backups, prompt, seed: image.seed, reply });
     }
   };
 

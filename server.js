@@ -28,12 +28,12 @@ app.use(
       directives: {
         // TensorFlow.js (visión sin IA) necesita 'unsafe-eval' para funcionar.
         "script-src": ["'self'", "'unsafe-eval'"],
-        "img-src": ["'self'", "data:", "blob:", "https://image.pollinations.ai"],
+        "img-src": ["'self'", "data:", "blob:", "https://image.pollinations.ai", "https://gen.pollinations.ai", "https://*.pollinations.ai"],
         "media-src": ["'self'", "blob:", "mediastream:"],
         "style-src": ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
         "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
         // Pesos del modelo de visión (Google) e imágenes creadas (Pollinations).
-        "connect-src": ["'self'", "https://storage.googleapis.com", "https://tfhub.dev", "https://www.kaggle.com", "https://*.kaggle.com", "https://*.kaggleusercontent.com", "https://image.pollinations.ai"],
+        "connect-src": ["'self'", "https://storage.googleapis.com", "https://tfhub.dev", "https://www.kaggle.com", "https://*.kaggle.com", "https://*.kaggleusercontent.com", "https://image.pollinations.ai", "https://gen.pollinations.ai", "https://*.pollinations.ai"],
         "worker-src": ["'self'", "blob:"],
         // Sin esto el navegador intenta usar https en localhost y la página puede salir sin estilos.
         "upgrade-insecure-requests": null

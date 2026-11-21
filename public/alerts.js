@@ -159,18 +159,22 @@
   }
 
   // Analiza un cuadro del video. Devuelve personas y alertas.
-  async function analyze(video) {
+  // source: video o una copia reducida del cuadro; k: cuánto hay que agrandar los puntos para volver al tamaño del video.
+  async function analyze(source, k = 1, fullWidth = null) {
     const detector = await ready();
     const now = performance.now();
-    const poses = await detector.estimatePoses(video, { maxPoses: 6, flipHorizontal: false });
-    const people = poses.filter((p) => (p.score ?? 1) > 0.25).map((p) => analyzePose(p, video.videoWidth, now));
+    const poses = await detector.estimatePoses(source, { maxPoses: 6, flipHorizontal: false });
+    if (k !== 1) for (const p of poses) for (const point of p.keypoints) { point.x *= k; point.y *= k; }
+    const width = fullWidth || source.videoWidth || source.width;
+    const people = poses.filter((p) => (p.score ?? 1) > 0.25).map((p) => analyzePose(p, width, now));
     for (const [id, h] of history) if (now - h.lastSeen > 3000) history.delete(id);
 
     const alerts = [];
     for (const p of people) {
       const who = people.length > 1 ? "Una persona" : "Persona";
       if (p.fallen) alerts.push({ type: `caida-${p.id}`, level: 3, text: `¡Alerta! ${who} en el suelo, posible caída.` });
-      if (p.distance != null && p.distance < 1) alerts.push({ type: `cerca-${p.id}`, level: 2, text: `¡Alerta! ${who} a menos de 1 metro.` });
+      // «Muy cerca» solo cuando alguien SE ACERCA hasta menos de 1 m (quien está sentado frente a la laptop no es una alerta).
+      if (p.distance != null && p.distance < 1 && p.approaching) alerts.push({ type: `cerca-${p.id}`, level: 2, text: `¡Alerta! ${who} se acercó a menos de 1 metro.` });
       if (p.handsUp) alerts.push({ type: `manos-${p.id}`, level: 2, text: `${who} con las manos levantadas.` });
       else if (p.waving) alerts.push({ type: `saluda-${p.id}`, level: 1, text: `${who} saludando.` });
       else if (p.oneHandUp) alerts.push({ type: `mano-${p.id}`, level: 1, text: `${who} con una mano levantada.` });

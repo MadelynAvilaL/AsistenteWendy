@@ -168,6 +168,17 @@ function createChat() {
   activeId = chat.id;
   save(); render();
 }
+// Tarea en curso (pensar, dibujar, clima…): se puede cancelar con «Wendy, cancela» o «para».
+let currentTask = null;
+function beginTask() {
+  currentTask = { controller: new AbortController(), cancelled: false };
+  return currentTask;
+}
+function cancelTask() {
+  if (!currentTask || currentTask.cancelled) return;
+  currentTask.cancelled = true;
+  try { currentTask.controller.abort(); } catch { /* nada */ }
+}
 function setBusy(value) {
   busy = value;
   sendButton.disabled = value;
@@ -199,6 +210,7 @@ async function sendMessage(text, photo = null) {
   input.value = ""; resizeInput();
   setBusy(true); pauseWake();
   showTyping(photo ? "Wendy está mirando la foto" : "Wendy está pensando");
+  const task = beginTask();
 
   try {
     const payload = chat.messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
@@ -206,9 +218,11 @@ async function sendMessage(text, photo = null) {
     const response = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: payload, timeZone: TIME_ZONE })
+      body: JSON.stringify({ messages: payload, timeZone: TIME_ZONE }),
+      signal: task.controller.signal
     });
     const data = await response.json().catch(() => ({}));
+    if (task.cancelled) throw new Error("cancelado");
     if (!response.ok) throw new Error(data.error || "No se pudo conectar con Wendy.");
 
     let reply = data.reply;
@@ -238,10 +252,15 @@ async function sendMessage(text, photo = null) {
     await speak(data.reply);
   } catch (error) {
     $("#typingIndicator")?.remove();
-    addMessage("assistant", `No pude responder: ${error.message}`, { temporary: true });
     setBusy(false);
-    await speak(error.message);
+    if (task.cancelled) {
+      addMessage("assistant", "Listo, lo cancelé.", { temporary: true });
+    } else {
+      addMessage("assistant", `No pude responder: ${error.message}`, { temporary: true });
+      await speak(error.message);
+    }
   } finally {
+    if (currentTask === task) currentTask = null;
     setBusy(false); renderHistory(); scrollToBottom();
     resumeWake();
   }
@@ -253,6 +272,8 @@ function resizeInput() {
 
 /* ---------------- Voz de Wendy (hablar) ---------------- */
 const LANG = (navigator.language || "").toLowerCase().startsWith("es") ? navigator.language : "es-ES";
+// El reconocimiento de voz de Chrome/Edge entiende mejor con un país concreto («es» o «es-419» a secas reconoce peor).
+const REC_LANG = /^es-[a-z]{2}$/i.test(LANG) ? LANG : "es-MX";
 const RATE_KEY = "wendy_rate";
 const VOLUME_KEY = "wendy_volume";
 const WAKE_KEY = "wendy_wake";
@@ -305,7 +326,8 @@ let speechId = 0;              // cada frase nueva tiene su número: así una fr
 let speakingListen = false;    // lo que se dice ahora deja el micrófono abierto
 let spokenText = "";           // lo que Wendy está diciendo (para no confundir su propia voz con una orden)
 let echoUntil = 0;             // hasta cuándo se descarta lo que suene igual a lo que dijo Wendy
-function speak(text, { force = false, rate = null, listen = false } = {}) {
+// Por defecto Wendy sigue escuchando mientras habla: así puedes decir «Wendy, para» o «apaga la cámara» sin tocar nada.
+function speak(text, { force = false, rate = null, listen = true } = {}) {
   return new Promise((resolve) => {
     if ((!voiceOn && !force) || !("speechSynthesis" in window) || !text) return resolve();
     const chunks = splitIntoChunks(cleanForSpeech(text));
@@ -403,7 +425,8 @@ let recMode = null;              // "push" (botón 🎤) o "wake" (escucha conti
 let wakeMode = false;
 let conversationActive = false;  // dijiste «Ey Wendy»: puedes seguir hablando sin repetir su nombre
 let conversationTimer = null;
-const WAKE_WORD = /\b(wendy|wendi|wendie|wendys|g[uü]endy|g[uü]endi|uendy|bendy|wenddy|windy|gwendy)\b[\s,.!?¡¿]*/i;
+// Variantes con las que Chrome suele escribir «Wendy» cuando se dice rápido o con acento.
+const WAKE_WORD = /\b(wendy|wendi|wendie|wendis|wendys|wendy's|g[uü]endy|g[uü]endi|g[uü]enti|uendy|uendi|bendy|bendi|brendy|mendy|wenty|wenddy|windy|gwendy)\b[\s,.!?¡¿]*/i;
 let recCount = 0;
 let interimTimer = null;
 let handledResult = "";
@@ -413,13 +436,23 @@ function isEcho(text) {
   const words = norm(text).split(" ").filter((w) => w.length > 2 && !/^(wendy|wendi)$/.test(w));
   if (!words.length) return false;
   const said = new Set(spokenText.split(" "));
-  return words.filter((w) => said.has(w)).length / words.length >= 0.6;
+  const ratio = words.filter((w) => said.has(w)).length / words.length;
+  // Si en lo que se oyó hay una orden para parar o apagar, es tuya aunque se mezcle con la voz de Wendy
+  // (solo se descarta si TODO lo oído son palabras que ella misma acaba de decir).
+  if (controlCommand(text)) return ratio >= 0.95;
+  return ratio >= 0.6;
 }
 // Órdenes cortas y claras que se pueden atender en cuanto se reconocen.
 function quickCommand(text) {
   const n = norm(text.replace(WAKE_WORD, " "));
   return CMD.liveStart.test(n) || CMD.liveStop.test(n) || CMD.narrate.test(n) ||
-    CMD.openCamera.test(n) || CMD.closeCamera.test(n) || CMD.farewell.test(n) || CMD.stopListening.test(n);
+    CMD.openCamera.test(n) || CMD.closeCamera.test(n) || CMD.farewell.test(n) || CMD.stopListening.test(n) ||
+    CMD.stop.test(n) || CMD.stopAnywhere.test(n);
+}
+// Órdenes para callar, parar o apagar: funcionan aunque no digas «Wendy» mientras ella habla o narra.
+function controlCommand(text) {
+  const n = norm(String(text).replace(WAKE_WORD, " "));
+  return CMD.stop.test(n) || CMD.stopAnywhere.test(n) || CMD.liveStop.test(n) || CMD.closeCamera.test(n) || CMD.cancel.test(n);
 }
 const FILLER_ONLY = /^(ey|hey|ei|oye|ok|okey|okay|hola|alo|al[oó]|buenas)?[\s,.!?¡¿]*$/i;
 
@@ -456,7 +489,7 @@ function startRecognition(mode) {
   }
   stopRecognition();
   const rec = new SpeechRec();
-  rec.lang = LANG;
+  rec.lang = REC_LANG;
   rec.interimResults = true;
   rec.continuous = mode === "wake";
   rec.maxAlternatives = 1;
@@ -525,7 +558,8 @@ function startRecognition(mode) {
   rec.onend = () => {
     if (recognition === rec) { recognition = null; recMode = null; }
     updateMicUI();
-    setTimeout(resumeWake, 350); // en modo «Ey Wendy» volvemos a escuchar solos
+    // En modo «Ey Wendy» volvemos a escuchar enseguida: mientras el micrófono está apagado se pierden palabras.
+    setTimeout(resumeWake, 80);
   };
   try { rec.start(); } catch { /* ya estaba iniciado */ }
   updateMicUI();
@@ -542,7 +576,7 @@ function stopRecognition() {
 }
 // Vigilante: si el micrófono de «Ey Wendy» se quedó apagado o trabado, lo vuelve a encender solo.
 setInterval(() => {
-  if (!wakeMode || busy || (speaking && !speakingListen) || recMode === "push") return;
+  if (!wakeMode || (speaking && !speakingListen) || recMode === "push") return;
   if (!recognition) { resumeWake(); return; }
   if (recMode === "wake" && !recognition.__started && Date.now() - recognition.__at > 4000) {
     console.warn("El reconocimiento de voz no arrancó; lo reinicio.");
@@ -550,11 +584,10 @@ setInterval(() => {
     setTimeout(resumeWake, 300);
   }
 }, 3000);
-function pauseWake() {
-  if (recMode === "wake") stopRecognition();
-}
+// Ya no se apaga el micrófono mientras Wendy piensa o dibuja: así puedes decir «Wendy, cancela» o «apaga la cámara».
+function pauseWake() { /* a propósito no hace nada (manos libres) */ }
 function resumeWake() {
-  if (wakeMode && !recognition && (!speaking || speakingListen) && !busy) {
+  if (wakeMode && !recognition && (!speaking || speakingListen)) {
     startRecognition("wake");
     startConversationTimer();
   }
@@ -582,13 +615,14 @@ function handleWakeSpeech(text) {
   const match = said.match(WAKE_WORD);
   // Lo que suena igual a lo que Wendy acaba de decir es su propia voz (eco), no una orden.
   if (isEcho(said)) return;
+  const control = controlCommand(said);
   if (speaking && speakingListen) {
-    // Narrando con el micrófono abierto: solo cuenta si dices «Wendy» (o «basta», «silencio»…).
-    const n = norm(said);
-    if (!match && !CMD.stop.test(n) && !CMD.liveStop.test(n)) return;
+    // Hablando o narrando con el micrófono abierto: solo cuenta si dices «Wendy» o una orden para parar/apagar.
+    if (!match && !control) return;
     stopSpeaking();
   }
-  if (!conversationActive && !match) return; // no te dirigiste a Wendy
+  // Las órdenes para parar o apagar valen sin decir «Wendy» si la cámara en vivo está activa o Wendy está ocupada.
+  if (!conversationActive && !match && !(control && (live || narrating || busy))) return; // no te dirigiste a Wendy
   conversationActive = true;
   let command = match ? `${said.slice(0, match.index)} ${said.slice(match.index + match[0].length)}`.trim() : said;
   // «Hey Wendy, ¿qué hora es?» → «¿qué hora es?» (el saludo no es parte de la pregunta)
@@ -609,7 +643,9 @@ function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
 
 const CMD = {
   stop: /^(ya )?(para|parale|detente|silencio|callate|basta|stop|shh|ya|apagalo|quitalo|alto)( ya| wendy| por favor| porfa)?$/,
-  closeCamera: /\b(cierra|cerrar|apaga|apagar|desactiva|quita|oculta)\b.*\bcamara\b/,
+  closeCamera: /\b(cierra|cierrala|cerrar|apaga|apagala|apagar|desactiva|desactivar|quita|quitar|oculta|para|parar|deten|detener|termina)\b.*\b(camara|video|webcam)\b|\bdeja de (ver|mirar|grabar)\b|\bya no (veas|mires|grabes)\b|\b(apaga|apagalo|cierra|cierralo|quita|quitalo) todo\b/,
+  stopAnywhere: /\b(callate|silencio|basta|detente|deja de hablar|ya no hables|para de hablar|ya para|para ya|shh+|alto ahi)\b/,
+  cancel: /\b(cancela|cancelalo|cancelala|cancelar|olvidalo|olvidala|ya no la hagas|ya no lo hagas|deja eso)\b/,
   switchCamera: /\b(cambia|cambiar|voltea|gira)\b.*\bcamara\b|\bcamara (frontal|trasera|de atras|de enfrente)\b/,
   vision: /\b(toma|tomame|tomale|saca|sacame|haz|hazme|captura)\b (una |la )?(foto|fotografia|imagen)|\bque (estas viendo|ves|miras|hay (enfrente|delante|aqui|ahi)|es esto|tengo (aqui|en la mano))\b|\bque estoy (viendo|mirando)\b|\bdescribe (lo que ves|esto|la foto|la imagen|lo que hay)\b|\bmira esto\b|\blee(me)? (esto|este texto|lo que dice)\b|\busa la camara\b|\bde que color es\b|\bque objeto es\b/,
   openCamera: /\b(abre|abrir|enciende|encender|activa|activar|prende|prender|pon|ponme|quiero|muestrame|muestra|necesito)\b.*\bcamara\b/,
@@ -664,10 +700,28 @@ function handleCommand(text) {
   const n = norm(original);
   if (!n) return;
 
-  if (CMD.stop.test(n)) {
+  // Apagar la cámara tiene prioridad: «apaga la cámara», «ya no veas», «apaga todo».
+  if (CMD.closeCamera.test(n)) {
+    stopSpeaking(); cancelTask();
+    closeCamera();
+    localReply(original, "Listo, apagué la cámara.");
+    return;
+  }
+  if (CMD.cancel.test(n) && busy) {
+    stopSpeaking(); cancelTask();
+    toast("Cancelado.");
+    return;
+  }
+  if (CMD.stop.test(n) || CMD.stopAnywhere.test(n) || CMD.cancel.test(n)) {
     stopSpeaking(); input.value = "";
-    if (narrating) { setNarrate(false); toast("Narración apagada."); }
+    cancelTask();
+    if (narrating) { setNarrate(false); toast("Narración apagada. Sigo mostrando lo que veo en pantalla."); }
     else if (live) stopLive();
+    return;
+  }
+  // Mientras Wendy está ocupada (pensando o dibujando) solo atiende las órdenes de arriba y las del modo en vivo.
+  if (busy && !CMD.liveStop.test(n) && !CMD.liveStart.test(n)) {
+    toast("Espera un momento, todavía estoy terminando lo anterior. Di «Wendy, cancela» para dejarlo.");
     return;
   }
 
@@ -706,7 +760,6 @@ function handleCommand(text) {
   if (CMD.location.test(n)) { tellLocation(original); return; }
   if (CMD.weather.test(n) && !CMD.notWeather.test(n)) { tellWeather(original); return; }
 
-  if (CMD.closeCamera.test(n)) { closeCamera(); localReply(original, "Listo, cerré la cámara."); return; }
   if (CMD.switchCamera.test(n)) { switchCamera().then((ok) => localReply(original, ok ? "Cambié de cámara." : "No pude cambiar de cámara.")); return; }
   if (CMD.vision.test(n)) { input.value = ""; askAboutCamera(original); return; }
   if (CMD.openCamera.test(n)) {
@@ -782,33 +835,60 @@ function handleCommand(text) {
 
 /* ---------------- Cámara ---------------- */
 let stream = null;
-let facingMode = "environment"; // cámara trasera en el celular; en la laptop usa la que haya
+let facingMode = IS_TOUCH_DEVICE ? "environment" : "user"; // celular: trasera; laptop: la cámara integrada
+let cameraIndex = 0; // en la laptop «Cambiar» pasa a la siguiente cámara conectada
 
+function cameraAlive() {
+  return Boolean(stream && stream.getVideoTracks().some((t) => t.readyState === "live"));
+}
+async function getCameraStream() {
+  // Resolución moderada: suficiente para que Gemini lea textos y mucho más liviana para la laptop.
+  const size = { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 24, max: 30 } };
+  let constraints = { ...size, facingMode: { ideal: facingMode } };
+  if (!IS_TOUCH_DEVICE) {
+    // Se saltan cámaras infrarrojas o virtuales (OBS, Snap…), que en muchas laptops salen primero y se ven negras.
+    const cams = (await navigator.mediaDevices.enumerateDevices().catch(() => []))
+      .filter((d) => d.kind === "videoinput" && d.deviceId && !/\b(ir|infrared|virtual|obs|snap|manycam|xsplit)\b/i.test(d.label));
+    if (cameraIndex > 0 && cams.length > 1) constraints = { ...size, deviceId: { exact: cams[cameraIndex % cams.length].deviceId } };
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+  } catch (error) {
+    // Algunas webcams no aceptan esas medidas o la cámara elegida ya no existe: se intenta con lo más básico.
+    if (["OverconstrainedError", "NotReadableError", "AbortError", "NotFoundError"].includes(error.name)) {
+      await new Promise((r) => setTimeout(r, 400));
+      return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    throw error;
+  }
+}
 async function openCamera() {
-  if (stream) { cameraPanel.hidden = false; return true; }
+  if (cameraAlive()) { cameraPanel.hidden = false; return true; }
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } // cámara «muerta» (la laptop se suspendió, se desconectó…)
   if (!navigator.mediaDevices?.getUserMedia) {
     toast("La cámara solo funciona en http://localhost o en una página https.");
     return false;
   }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
+    stream = await getCameraStream();
   } catch (error) {
     const reason = error.name === "NotAllowedError"
       ? "Permite el acceso a la cámara en el navegador (ícono del candado junto a la dirección)."
       : error.name === "NotFoundError"
         ? "No se encontró ninguna cámara conectada."
         : error.name === "NotReadableError"
-          ? "La cámara está siendo usada por otra aplicación, como Zoom o Teams."
+          ? "La cámara está siendo usada por otra aplicación, como Zoom, Teams o la app Cámara. Ciérrala e inténtalo de nuevo."
           : "No se pudo abrir la cámara.";
     toast(reason);
     speak(reason);
     return false;
   }
+  const track = stream.getVideoTracks()[0];
+  // Si la cámara se apaga sola (suspensión, cable), se limpia todo para poder volver a abrirla.
+  track?.addEventListener("ended", () => { if (stream && !cameraAlive()) { closeCamera(); toast("La cámara se desconectó. Pídeme que la abra otra vez."); } });
   video.srcObject = stream;
-  const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
+  try { await video.play(); } catch { /* el autoplay la reproduce igual */ }
+  const settings = track?.getSettings?.() || {};
   video.classList.toggle("mirrored", settings.facingMode !== "environment");
   cameraPanel.hidden = false;
   cameraButton.classList.add("active");
@@ -824,6 +904,7 @@ function closeCamera() {
 }
 async function switchCamera() {
   facingMode = facingMode === "environment" ? "user" : "environment";
+  cameraIndex++;
   const wasLive = live;
   const wasNarrating = narrating;
   closeCamera();
@@ -966,13 +1047,20 @@ async function runTask(userText, typingLabel, task) {
   input.value = ""; resizeInput();
   setBusy(true); pauseWake();
   showTyping(typingLabel);
+  const job = beginTask();
   let result;
   try {
-    result = await task();
+    result = await task(job.controller.signal);
   } catch (error) {
     result = { reply: error.message || "Algo salió mal. Inténtalo de nuevo.", source: "local" };
   }
+  if (currentTask === job) currentTask = null;
   $("#typingIndicator")?.remove();
+  if (job.cancelled) {
+    addMessage("assistant", "Listo, lo cancelé.", { temporary: true });
+    setBusy(false);
+    return;
+  }
   try {
     const message = { role: "assistant", content: result.reply, source: result.source || "local" };
     if (result.image) message.image = result.image;
@@ -1066,24 +1154,28 @@ function tellWeather(userText) {
 }
 
 /* ---------------- Crear imágenes ---------------- */
-const IMAGE_VERBS = "crea|cr[eé]ame|crear|genera|gen[eé]rame|generar|dibuja|dib[uú]jame|dibujar|pinta|p[ií]ntame|pintar|dise[ñn]a|dis[eé][ñn]ame|ilustra|il[uú]strame|haz|hazme|hacer|muestra|mu[eé]strame";
+const IMAGE_VERBS = "crea|cr[eé]ame|crear|crearme|creas|genera|gen[eé]rame|generar|generarme|generas|dibuja|dib[uú]jame|dibujar|dibujarme|dibujas|pinta|p[ií]ntame|pintar|pintarme|pintas|dise[ñn]a|dis[eé][ñn]ame|dise[ñn]ar|ilustra|il[uú]strame|haz|hazme|hacer|hacerme|haces|muestra|mu[eé]strame|quiero|quisiera|dame|d[aá]me|necesito|reg[aá]lame|hagas|crees|generes|dibujes|pintes|dise[ñn]es";
 const IMAGE_NOUNS = "im[aá]gen(?:es)?|dibujo|ilustraci[oó]n|foto(?:graf[ií]a)?|retrato|logo(?:tipo)?|paisaje|pintura|caricatura|p[oó]ster|fondo de pantalla|wallpaper|personaje|icono|meme|arte";
 const IMAGE_RE = new RegExp(
   `^(?:wendy[, ]*)?(?:por favor[, ]*)?(?:puedes |podr[ií]as |quiero que )?(${IMAGE_VERBS})\\s+(?:me\\s+)?(?:(?:una?|el|la|otra|otro|otras|otros|unas|unos|mas|m[aá]s|nueva|nuevo|una nueva|un nuevo|\\d+)\\s+)?(?:(${IMAGE_NOUNS})\\s*)?(?:(?:de|del|sobre|con|que sea|que tenga|donde|en la que)\\s+)?(.+)$`,
   "i"
 );
+// Lo que se dice antes del pedido: «Ey Wendy, ¿me puedes…», «por favor, podrías…», «quiero que me…».
+const IMAGE_LEAD = /^(?:(?:ey|hey|oye|ok|wendy|por favor|porfa|me|t[uú]|puedes|podr[ií]as|pudieras|quiero que|quisiera que|necesito que|me haces el favor de|ser[ií]as tan amable de)[\s,]+)+/i;
 function parseImageRequest(text) {
-  const clean = text.trim().replace(/[.!?]+$/, "");
+  let clean = text.trim().replace(/^[¿¡\s]+/, "").replace(/[.!?¿¡\s]+$/, "");
+  clean = clean.replace(IMAGE_LEAD, "");
   const m = clean.match(IMAGE_RE);
   if (!m) return null;
   const verb = m[1].toLowerCase();
   const noun = (m[2] || "").toLowerCase();
-  const subject = (m[3] || "").trim();
+  const subject = (m[3] || "").trim().replace(/^(?:por favor|porfa)[,\s]+/i, "");
   if (!subject) return null;
-  // «hazme/muéstrame…» solo cuenta si pide una imagen o dibujo; «hazme una foto» es tomar foto con la cámara.
-  if (/^(haz|hazme|hacer|muestra|mu)/.test(verb) && (!noun || noun.startsWith("foto"))) return null;
+  // «hazme una foto» es tomar foto con la cámara; «haz/quiero/dame…» sin «imagen/dibujo» no es pedir un dibujo.
+  if (/^(haz|hac|hag|mu)/.test(verb) && (!noun || noun.startsWith("foto"))) return null;
+  if (/^(quier|quis|da|dá|nece|reg)/.test(verb) && !noun) return null;
   // «crea/genera…» sin sustantivo: solo si no parece otra cosa (ej. «crea una lista»).
-  if (!noun && /^(cr|gen|dise)/.test(verb) && /^(una? )?(lista|resumen|texto|poema|cuento|historia|correo|carta|tabla|plan)\b/.test(subject)) return null;
+  if (!noun && /^(cr|gen|dise)/.test(verb) && /^(una? )?(lista|resumen|texto|poema|cuento|historia|correo|carta|tabla|plan|frase|chiste|cancion|canción|nombre)\b/i.test(subject)) return null;
   if (!noun || /^(im|foto)/.test(noun)) return subject;
   return /^(para|con|sobre|en|estilo|que)\b/i.test(subject) ? `${noun} ${subject}` : `${noun} de ${subject}`;
 }
@@ -1100,13 +1192,17 @@ function parseImageEdit(text) {
   if (IMAGE_EDIT.test(n) && (recent || /\b(imagen|dibujo|foto|ilustracion|logo|fondo)\b/.test(n))) return { change: text.trim() };
   return null;
 }
-// Descarga la imagen y avisa si llegó (true) o no (false) antes del tiempo límite.
-function loadImage(url, timeoutMs) {
+// Descarga la imagen y avisa si llegó (true) o no (false) antes del tiempo límite (o si la cancelas).
+function loadImage(url, timeoutMs, signal) {
   return new Promise((resolve) => {
     const img = new Image();
-    const timer = setTimeout(() => { img.src = ""; resolve(false); }, timeoutMs);
-    img.onload = () => { clearTimeout(timer); resolve(img.naturalWidth > 0); };
-    img.onerror = () => { clearTimeout(timer); resolve(false); };
+    const finish = (value) => { clearTimeout(timer); signal?.removeEventListener?.("abort", onAbort); resolve(value); };
+    const onAbort = () => { img.src = ""; finish(false); };
+    const timer = setTimeout(() => { img.src = ""; finish(false); }, timeoutMs);
+    if (signal?.aborted) return finish(false);
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    img.onload = () => finish(img.naturalWidth > 0);
+    img.onerror = () => finish(false);
     img.src = url;
   });
 }
@@ -1115,9 +1211,15 @@ function lastAssistantSource() {
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "assistant") return messages[i].source;
   return null;
 }
+const wait = (ms, signal) => new Promise((resolve) => {
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener?.("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+});
 function createImage(userText, prompt, edit = null) {
   const label = edit ? "Wendy está cambiando la imagen" : "Wendy está dibujando (puede tardar hasta un minuto)";
-  runTask(userText, label, async () => {
+  // Avisa de inmediato (con el micrófono abierto: puedes decir «Wendy, cancela»).
+  speak(pick(["Claro, ahorita te la dibujo. Dame unos segundos.", "Va, la estoy dibujando. Dame un momento.", "Con gusto, ya la estoy haciendo."]));
+  runTask(userText, label, async (signal) => {
     const body = edit?.again
       ? { prompt: lastImage.request, ready: lastImage.prompt }                       // la misma idea, otra versión
       : edit ? { prompt: edit.change, base: lastImage.prompt, seed: lastImage.seed } // cambia la anterior
@@ -1125,20 +1227,25 @@ function createImage(userText, prompt, edit = null) {
     const data = await fetchJSON("/api/imagen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
     if (!data.url) return { reply: data.reply };
     // Espera a que la imagen esté lista de verdad antes de decir «¡Listo!» (el servicio gratis tarda).
-    const typing = $("#typingIndicator .message-name");
-    let url = data.url;
-    let loaded = await loadImage(url, 90000);
-    if (!loaded) {
-      if (typing) typing.textContent = "El servicio de imágenes está lento, lo intento otra vez…";
-      await new Promise((r) => setTimeout(r, 4000));
-      url = `${data.url}&intento=2`;
-      loaded = await loadImage(url, 90000);
+    const typing = () => $("#typingIndicator .message-name");
+    const urls = [data.url, ...(Array.isArray(data.backups) ? data.backups : [])];
+    let url = null;
+    for (let i = 0; i < urls.length && !url && !signal.aborted; i++) {
+      if (i > 0) {
+        if (typing()) typing().textContent = "El servicio de imágenes está lento, lo intento otra vez…";
+        // El servicio gratuito solo acepta un pedido cada ~15 s: esperamos antes de reintentar.
+        await wait(15000, signal);
+        if (signal.aborted) break;
+      }
+      if (await loadImage(urls[i], 60000, signal)) url = urls[i];
     }
-    if (!loaded) return { reply: "El servicio gratuito de imágenes no me la entregó a tiempo. Pídemela otra vez en un minuto, por favor." };
+    if (signal.aborted) return { reply: "Cancelado." };
+    if (!url) return { reply: "El servicio gratuito de imágenes no me la entregó a tiempo. Pídemela otra vez en un minuto, por favor." };
     data.url = url;
     const request = edit && !edit.again ? `${lastImage.request}, ${edit.change}` : edit ? lastImage.request : prompt;
     lastImage = { request, prompt: data.prompt || request, seed: data.seed };
@@ -1186,12 +1293,15 @@ function setNarrate(on) {
   narrating = on;
   lastNarratedKey = "";
   lastNarratedAt = 0;
+  recentNarrations = [];
+  if (on) lastGeminiAt = 0; // pide a Gemini una descripción enseguida
+  else stopSpeaking();
   setLiveUI();
-  if (on) toast("Narración activada: te digo lo que veo en voz alta.");
+  if (on) toast("Narración activada. Di «para» o «basta» para que me calle.");
 }
 async function startLive({ narrate = false } = {}) {
   if (!(await openCamera())) return false;
-  if (narrate) { narrating = true; lastNarratedKey = ""; lastNarratedAt = 0; }
+  if (narrate) { narrating = true; lastNarratedKey = ""; lastNarratedAt = 0; recentNarrations = []; lastGeminiAt = 0; }
   if (live) { setLiveUI(); return true; }
   live = true;
   tracks = [];
@@ -1214,6 +1324,7 @@ async function startLive({ narrate = false } = {}) {
   return true;
 }
 function stopLive({ quiet = false } = {}) {
+  if (narrating) stopSpeaking(); // que deje de narrar en ese mismo momento
   live = false;
   narrating = false;
   people = [];
@@ -1336,6 +1447,7 @@ let people = [];                 // personas con postura (de WendyAlerts)
 const alertLast = new Map();     // tipo de alerta → última vez que se dijo
 let lastAlertSpokenAt = 0;
 const memoryAlertLast = new Map();
+const alertSpokenLast = new Map(); // tipo de alerta → última vez que se dijo en voz alta
 let alertHideTimer = null;
 const ALERT_RATE = 1.15;         // las alertas se dicen un poco más rápido
 const NARRATE_RATE = 1.05;
@@ -1361,11 +1473,14 @@ function handleAlerts(alerts) {
   banner.hidden = false;
   clearTimeout(alertHideTimer);
   alertHideTimer = setTimeout(() => { banner.hidden = true; }, 3500);
-  // En voz: solo si está narrando; las alertas interrumpen lo que se estaba diciendo.
-  if (narrating && now - lastAlertSpokenAt > 4000 && !speaking && (!busy || top.level >= 3)) { // ocupada (ej. dibujando): solo lo urgente
+  // En voz: solo si está narrando y solo lo importante (caídas, alguien que se acerca mucho, peligro).
+  // «Mano levantada» o «saludando» solo se muestran en pantalla, para que Wendy no hable a cada rato.
+  const urgent = fresh.filter((a) => a.level >= 2 && now - (alertSpokenLast.get(a.type.replace(/-\d+$/, "")) || 0) > (a.level >= 3 ? 15000 : 45000));
+  if (narrating && urgent.length && now - lastAlertSpokenAt > 6000 && (!speaking || urgent[0].level >= 3) && (!busy || urgent[0].level >= 3)) {
     lastAlertSpokenAt = now;
     lastNarratedAt = now;
-    speak(fresh.slice(0, 2).map((a) => a.text).join(" "), { rate: ALERT_RATE, force: true, listen: true });
+    urgent.forEach((a) => alertSpokenLast.set(a.type.replace(/-\d+$/, ""), now));
+    speak(urgent.slice(0, 2).map((a) => a.text).join(" "), { rate: ALERT_RATE, force: true, listen: true });
   }
 }
 
@@ -1404,24 +1519,42 @@ function drawSkeletons(mirrored) {
   }
 }
 
-// Para no calentar la computadora: unas 4 revisiones por segundo (menos si la compu es lenta),
-// y el detector de posturas solo corre cuando hay una persona a la vista.
+// Para no calentar la computadora:
+// - el reconocimiento trabaja sobre una copia pequeña del video (416 px de ancho), no sobre el video completo;
+// - unas 2 revisiones por segundo (menos si la compu es lenta);
+// - el detector de posturas solo corre cuando hay una persona a la vista, y no en cada revisión.
+const DETECT_W = 416;
+const LIVE_MIN_GAP = 450; // ms de descanso entre revisiones
+const detectCanvas = document.createElement("canvas");
+const detectCtx = detectCanvas.getContext("2d", { willReadFrequently: false });
 let tickCount = 0;
 let lastPersonAt = 0;
 let lastPoseResult = null;
+function smallFrame() {
+  const W = video.videoWidth;
+  const H = video.videoHeight;
+  const scale = Math.min(1, DETECT_W / W);
+  const w = Math.round(W * scale);
+  const h = Math.round(H * scale);
+  if (detectCanvas.width !== w || detectCanvas.height !== h) { detectCanvas.width = w; detectCanvas.height = h; }
+  detectCtx.drawImage(video, 0, 0, w, h);
+  return { canvas: detectCanvas, k: 1 / scale };
+}
 async function liveTick() {
   if (!live) return;
-  if (document.hidden || !video.videoWidth) { liveTimer = setTimeout(liveTick, 800); return; }
+  if (document.hidden || !video.videoWidth) { liveTimer = setTimeout(liveTick, 1000); return; }
   const started = performance.now();
   try {
     const mirrored = video.classList.contains("mirrored");
     tickCount++;
-    const raw = await window.WendyVision.detect(video, 0.45);
+    const frame = smallFrame();
+    const raw = (await window.WendyVision.detectLive(frame.canvas, 0.45))
+      .map((d) => ({ ...d, bbox: d.bbox.map((v) => v * frame.k) })); // cajas de vuelta al tamaño del video
     if (raw.some((d) => d.class === "person")) lastPersonAt = Date.now();
     const wantPose = poseReady && Date.now() - lastPersonAt < 3000;
     let poseResult = null;
-    if (wantPose && (tickCount % 2 === 0 || !lastPoseResult)) {
-      poseResult = await window.WendyAlerts.analyze(video).catch(() => null);
+    if (wantPose && (tickCount % 3 === 0 || !lastPoseResult)) {
+      poseResult = await window.WendyAlerts.analyze(frame.canvas, frame.k, video.videoWidth).catch(() => null);
       lastPoseResult = poseResult;
     } else if (wantPose) {
       poseResult = lastPoseResult ? { ...lastPoseResult, alerts: [] } : null; // reutiliza la última postura
@@ -1439,15 +1572,16 @@ async function liveTick() {
     const objectsText = geminiFresh()
       ? `Veo: ${[...new Set(geminiObjects.map((g) => g.name).filter((n) => !/persona/i.test(n)))].join(", ")}`
       : others.length ? window.WendyVision.describe(others, video.videoWidth, mirrored).split(". ")[0] : ""; // corto, para decirlo rápido
-    let sentence = [peopleText, objectsText].filter(Boolean).join(". ").replace(/\.\./g, ".").replace(/\.?$/, ".");
+    let sentence = [peopleText, objectsText.replace(/^Veo: $/, "")].filter(Boolean).join(". ").replace(/\.\./g, ".").replace(/\.?$/, ".");
     if (!peopleText && !objectsText) sentence = detections.length ? window.WendyVision.describe(detections, video.videoWidth, mirrored) : "Buscando objetos…";
     $("#liveLocal").textContent = sentence;
 
-    // ¿Cambió la escena? (se considera cambio si dura medio segundo)
-    const peopleKey = people.map((p) => `${p.handsUp ? "M" : p.oneHandUp ? "m" : ""}${p.fallen ? "C" : ""}${p.distance == null ? "" : p.distance < 1 ? "<1" : Math.round(p.distance)}`).join(",");
-    const key = `${window.WendyVision.summaryKey(detections)}#${peopleKey}`;
+    // ¿Cambió la escena? Solo cuenta QUÉ hay (no cuántos ni a qué distancia, que cambian a cada rato)
+    // y debe durar 1,5 s seguidos para que un objeto que aparece un instante no la haga hablar.
+    const peopleKey = people.length ? `persona${people.some((p) => p.fallen) ? "+caida" : ""}${people.some((p) => p.handsUp) ? "+manos" : ""}` : "";
+    const key = [...new Set(detections.filter((d) => d.class !== "person").map((d) => d.class))].sort().join("|") + "#" + peopleKey;
     if (key !== candidateKey) { candidateKey = key; candidateSince = Date.now(); }
-    if (candidateKey !== stableKey && Date.now() - candidateSince > 500) {
+    if (candidateKey !== stableKey && Date.now() - candidateSince > 1500) {
       stableKey = candidateKey;
       lastSentence = sentence;
     }
@@ -1457,32 +1591,53 @@ async function liveTick() {
     console.error("Modo en vivo:", error);
   }
   const spent = performance.now() - started;
-  liveTimer = setTimeout(liveTick, Math.max(LIVE_MIN_GAP, spent * 1.5));
+  liveTimer = setTimeout(liveTick, Math.max(LIVE_MIN_GAP, spent * 2));
 }
-const LIVE_MIN_GAP = 220; // ms de descanso entre revisiones
+
+/* ---- Narración sin repetir ---- */
 // La narración se dice aunque la voz esté en silencio (la pediste) y deja el micrófono abierto
-// para que «Ey Wendy, deja de narrar» funcione en cualquier momento.
+// para que «para», «basta» o «apaga la cámara» funcionen en cualquier momento.
+const NARRATE_GAP_MS = 8000;      // mínimo entre una narración y otra
+const NO_REPEAT_MS = 90000;       // lo mismo no se repite en este tiempo
+let recentNarrations = [];        // [{ t, words:Set }]
+function wordSet(text) {
+  return new Set(norm(text).split(" ").filter((w) => w.length > 2 && !/^(veo|una|uno|unos|unas|las|los|con|del|que|esta|hay|persona|metros?|unos)$/.test(w)));
+}
+function alreadySaid(text) {
+  const now = Date.now();
+  recentNarrations = recentNarrations.filter((r) => now - r.t < NO_REPEAT_MS);
+  const words = wordSet(text);
+  if (!words.size) return true;
+  return recentNarrations.some((r) => {
+    let shared = 0;
+    for (const w of words) if (r.words.has(w)) shared++;
+    return shared / Math.max(words.size, r.words.size) >= 0.6; // casi lo mismo dicho con otras palabras
+  });
+}
 function narrate(text) {
-  if (!text) return;
+  if (!text || alreadySaid(text)) return false;
   lastNarratedAt = Date.now();
   lastNarratedKey = stableKey;
+  recentNarrations.push({ t: Date.now(), words: wordSet(text) });
   speak(text, { rate: NARRATE_RATE, force: true, listen: true });
+  return true;
 }
 function maybeNarrate(text = null) {
   if (!narrating || speaking || busy) return;
   const now = Date.now();
+  if (now - lastNarratedAt < NARRATE_GAP_MS) return;
   if (text) { narrate(text); return; }
-  const changed = stableKey !== lastNarratedKey;
-  // Escena nueva: se dice (como mucho cada 4 s). Con personas a la vista se repite cada 12 s aunque no cambie.
-  if (changed ? now - lastNarratedAt < 4000 : !(people.length && now - lastNarratedAt > 12000)) return;
-  narrate(lastSentence || $("#liveLocal").textContent);
+  // Solo habla cuando la escena cambia de verdad; si nada cambia, se queda callada.
+  if (!stableKey || stableKey === lastNarratedKey) return;
+  if (!narrate(lastSentence || $("#liveLocal").textContent)) lastNarratedKey = stableKey;
 }
 async function maybeAskGeminiLive() {
   const now = Date.now();
-  // Narrando con personas a la vista: cada 5 s (para describir lo que hacen). Si no, cada 8 s y solo si algo cambió.
-  const interval = narrating && people.length ? 5000 : 8000;
+  // Cada 10 s narrando (15 s si no) y solo si algo cambió; si nada cambia, una vez cada 45 s.
+  // Así no se gasta el límite gratuito de Gemini ni se calienta la compu enviando fotos sin parar.
+  const interval = narrating ? 10000 : 15000;
   if (!geminiAvailable || geminiLiveBusy || now < geminiPausedUntil || now - lastGeminiAt < interval) return;
-  if (!(narrating && people.length) && stableKey === lastGeminiKey && now - lastGeminiAt < 25000) return; // nada cambió: no gastamos el límite gratis
+  if (stableKey === lastGeminiKey && now - lastGeminiAt < 45000) return;
   geminiLiveBusy = true;
   lastGeminiAt = now;
   lastGeminiKey = stableKey;
@@ -1508,12 +1663,12 @@ async function maybeAskGeminiLive() {
         bbox: [o.box[1] / 1000 * W, o.box[0] / 1000 * H, (o.box[3] - o.box[1]) / 1000 * W, (o.box[2] - o.box[0]) / 1000 * H]
       })).filter((o) => o.bbox[2] > 4 && o.bbox[3] > 4);
       geminiObjectsAt = Date.now();
-      if (data.alert) handleAlerts([{ type: `gemini-${data.alert}`, level: 3, text: `¡Alerta! ${data.alert}` }]);
+      if (data.alert) handleAlerts([{ type: `gemini-${norm(data.alert).slice(0, 30)}`, level: 3, text: `¡Alerta! ${data.alert}` }]);
       if (data.caption) {
         $("#liveGemini").hidden = false;
         $("#liveGemini").textContent = data.caption;
-        // Lo que hace cada persona: se dice aunque la escena no haya cambiado.
-        if (narrating && (stableKey !== lastNarratedKey || people.length) && Date.now() - lastNarratedAt > 6000) maybeNarrate(data.caption);
+        // La descripción de Gemini se dice solo si aporta algo nuevo (no repite lo mismo con otras palabras).
+        if (narrating) maybeNarrate(data.caption);
       }
     } else if (data.skip) {
       geminiAvailable = false;
@@ -1551,7 +1706,7 @@ async function startMeter() {
   if (analyser || meterStarting || !navigator.mediaDevices?.getUserMedia) return;
   meterStarting = true;
   try {
-    const micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); // solo para el anillo; no altera lo que oye el reconocimiento
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioCtx.createMediaStreamSource(micStream);
     analyser = audioCtx.createAnalyser();
@@ -1610,8 +1765,8 @@ function readVoice() {
 
 let lastVizAt = 0;
 function drawMicViz(time) {
-  // 30 cuadros por segundo (20 con el modo en vivo) son suficientes y gastan mucho menos.
-  if (time - lastVizAt < (live ? 48 : 32)) { requestAnimationFrame(drawMicViz); return; }
+  // 24 cuadros por segundo (12 con la cámara en vivo) bastan para el anillo y calientan mucho menos la laptop.
+  if (time - lastVizAt < (live ? 83 : 42)) { requestAnimationFrame(drawMicViz); return; }
   lastVizAt = time;
   const dpr = window.devicePixelRatio || 1;
   const size = Math.min(micViz.clientWidth, micViz.clientHeight) || micViz.clientWidth;
@@ -1680,22 +1835,18 @@ function drawMicViz(time) {
     const len = maxLen * (0.08 + v * 0.92);
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    // Degradado rosa → morado a lo largo de cada barra
+    // Un color por barra (antes era un degradado por barra en cada cuadro: 96 degradados × 30 fps, muy pesado).
     const x1 = c + cos * r0, y1 = c + sin * r0;
     const x2 = c + cos * (r0 + len), y2 = c + sin * (r0 + len);
-    const g = vizCtx.createLinearGradient(x1, y1, x2, y2);
-    g.addColorStop(0, `hsla(${vizHue - 25}, 85%, 68%, ${0.55 + v * 0.45})`);
-    g.addColorStop(1, `hsla(${vizHue + 15}, 95%, ${66 + v * 12}%, ${0.35 + v * 0.65})`);
-    vizCtx.strokeStyle = g;
+    vizCtx.strokeStyle = `hsla(${Math.round(vizHue - 10 + v * 20)}, 90%, ${66 + Math.round(v * 10)}%, ${(0.45 + v * 0.55).toFixed(2)})`;
     vizCtx.beginPath();
     vizCtx.moveTo(x1, y1);
     vizCtx.lineTo(x2, y2);
     vizCtx.stroke();
   }
 
-  // El botón crece un poco y brilla con el volumen
-  micButton.style.transform = `scale(${scale})`;
-  micButton.style.boxShadow = `0 10px 30px rgba(104,104,255,.4), 0 0 ${16 + vizLevel * 50}px hsla(${vizHue}, 90%, 65%, ${0.35 + vizLevel * 0.45})`;
+  // El botón crece un poco con el volumen (la sombra ya no se recalcula en cada cuadro: eso obligaba a repintar).
+  micButton.style.transform = `scale(${scale.toFixed(3)})`;
   requestAnimationFrame(drawMicViz);
 }
 requestAnimationFrame(drawMicViz);

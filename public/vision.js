@@ -40,7 +40,7 @@
   };
   const NUMEROS = ["", "", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"];
 
-  let modelPromise = null;
+  const modelPromises = {}; // un modelo por tipo: «lite» (en vivo, liviano) y «full» (fotos, más preciso)
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -52,19 +52,21 @@
     });
   }
 
-  function loadModel() {
-    if (!modelPromise) {
-      modelPromise = (async () => {
+  // «lite_mobilenet_v2»: varias veces más liviano, ideal para el modo en vivo (no calienta la laptop).
+  // «mobilenet_v2»: más preciso, solo para describir una foto cuando no hay Gemini.
+  function loadModel(kind = "lite") {
+    if (!modelPromises[kind]) {
+      modelPromises[kind] = (async () => {
         if (!window.tf) await loadScript("/vendor/tfjs/tf.min.js");
         if (!window.cocoSsd) await loadScript("/vendor/coco-ssd/coco-ssd.min.js");
-        // «mobilenet_v2» es más preciso que «lite_mobilenet_v2» (un poco más pesado la primera vez).
-        return window.cocoSsd.load({ base: "mobilenet_v2" });
+        try { await window.tf.setBackend("webgl"); await window.tf.ready(); } catch { /* usa el que haya */ }
+        return window.cocoSsd.load({ base: kind === "full" ? "mobilenet_v2" : "lite_mobilenet_v2" });
       })().catch((error) => {
-        modelPromise = null; // permite reintentar
+        delete modelPromises[kind]; // permite reintentar
         throw error;
       });
     }
-    return modelPromise;
+    return modelPromises[kind];
   }
 
   function nombre(clase, cantidad) {
@@ -92,9 +94,13 @@
   }
 
   // Detecta objetos en una imagen, video o canvas.
-  async function detect(source, minScore = 0.5) {
-    const model = await loadModel();
+  async function detect(source, minScore = 0.5, kind = "full") {
+    const model = await loadModel(kind);
     return (await model.detect(source, 20)).filter((d) => d.score >= minScore);
+  }
+  // Para el modo en vivo: modelo liviano sobre una imagen pequeña.
+  function detectLive(source, minScore = 0.45) {
+    return detect(source, minScore, "lite");
   }
 
   // Convierte las detecciones en una frase en español.
@@ -139,8 +145,8 @@
   }
 
   window.WendyVision = {
-    describeLocally, detect, describe, summaryKey, label,
-    ready: loadModel,
-    preload: () => loadModel().catch(() => {})
+    describeLocally, detect, detectLive, describe, summaryKey, label,
+    ready: () => loadModel("lite"),
+    preload: () => loadModel("lite").catch(() => {})
   };
 })();
